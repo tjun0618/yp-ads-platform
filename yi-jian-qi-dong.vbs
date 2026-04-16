@@ -26,6 +26,15 @@ If Len(sOut) > 0 Then
 End If
 On Error GoTo 0
 
+' 删除 Python 缓存目录（确保加载最新代码）
+On Error Resume Next
+Dim PyCacheDir
+PyCacheDir = ProjectDir & "\__pycache__"
+If FSO.FolderExists(PyCacheDir) Then
+    FSO.DeleteFolder PyCacheDir
+End If
+On Error GoTo 0
+
 ' 等待端口释放
 WScript.Sleep 2000
 
