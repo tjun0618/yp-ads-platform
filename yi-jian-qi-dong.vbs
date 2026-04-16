@@ -1,22 +1,15 @@
 Option Explicit
 
-Dim WshShell, FSO, ProjectDir, ps1Path
+Dim WshShell, FSO, ProjectDir
 Dim oExec, sOut, isRunning, i
 
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO      = CreateObject("Scripting.FileSystemObject")
 
 ProjectDir = FSO.GetParentFolderName(WScript.ScriptFullName)
-ps1Path = ProjectDir & "\start_flask.ps1"
 
-' 先关闭旧进程（通过端口 5055 查找并关闭）
-On Error Resume Next
-WshShell.Run "cmd /c for /f ""tokens=5"" %a in ('netstat -ano ^| findstr :5055 ^| findstr LISTENING') do taskkill /F /PID %a", 0, True
-WScript.Sleep 2000
-On Error GoTo 0
-
-' 启动新服务
-WshShell.Run "powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File """ & ps1Path & """", 0, False
+' 调用批处理脚本关闭旧进程并启动新服务
+WshShell.Run """" & ProjectDir & "\restart_server.bat""", 0, True
 
 ' 等待服务启动
 isRunning = False
