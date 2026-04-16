@@ -709,11 +709,12 @@
                 try {
                     const response = await fetch(`/api/workflow/ads/status/${taskId}`);
                     const result = await response.json();
+                    console.log(`[Poll ${i+1}] Status:`, result.status, result);
                     
                     if (result.status === 'completed') {
                         workflowState[nodeId] = result.result;
                         updateNodeStatus(nodeId, 'completed', result.summary);
-                        log(`${getNodeTitle(nodeId)} 完成 (${result.result.method})`, 'success');
+                        log(`${getNodeTitle(nodeId)} 完成 (${result.result?.method || 'Rule Engine'})`, 'success');
                         return;
                     } else if (result.status === 'failed') {
                         updateNodeStatus(nodeId, 'error');
@@ -725,6 +726,7 @@
                         log(`任务等待中... (${i + 1}/${maxAttempts})`, 'info');
                     }
                 } catch (e) {
+                    console.error(`[Poll ${i+1}] Error:`, e);
                     log(`轮询状态失败: ${e.message}`, 'error');
                 }
             }

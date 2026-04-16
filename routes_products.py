@@ -4638,6 +4638,7 @@ def api_workflow_ads_status(task_id):
 
     with _ads_task_lock:
         if task_id not in _ads_generation_tasks:
+            print(f"[Status] Task {task_id} not found")
             return jsonify(
                 {
                     "success": False,
@@ -4647,20 +4648,26 @@ def api_workflow_ads_status(task_id):
 
         task = _ads_generation_tasks[task_id].copy()
 
+    status = task.get("status")
+    print(f"[Status] Task {task_id} status: {status}")
+
     response = {
         "success": True,
         "task_id": task_id,
-        "status": task["status"],
+        "status": status,
     }
 
-    if task["status"] == "completed":
-        response["result"] = task.get("result", {})
+    if status == "completed":
+        result = task.get("result", {})
+        response["result"] = result
         response["summary"] = (
-            f"广告方案已生成 ({task['result']['method']})<br><a href='{task['result']['download_url']}' download='{task['result']['filename']}'>📥 下载 {task['result']['filename']}</a>"
+            f"广告方案已生成 ({result.get('method', 'unknown')})<br><a href='{result.get('download_url', '')}' download='{result.get('filename', '')}'>📥 下载 {result.get('filename', '')}</a>"
         )
-    elif task["status"] == "failed":
+        print(f"[Status] Returning completed result: {result.get('filename')}")
+    elif status == "failed":
         response["error"] = task.get("error", "未知错误")
-    elif task["status"] == "generating":
+        print(f"[Status] Returning failed: {response['error']}")
+    elif status == "generating":
         response["message"] = "广告正在生成中，请稍后..."
     else:
         response["message"] = "任务等待中..."
