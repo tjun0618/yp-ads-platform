@@ -806,6 +806,7 @@
             if (!data) return;
             
             const isValid = isDataValid(nodeId, data);
+            const canRecollect = canRecollectNode(nodeId);
             const title = getNodeTitle(nodeId) + ' - 详情' + (isValid ? '' : ' (数据无效)');
             
             document.getElementById('modalTitle').textContent = title;
@@ -813,7 +814,7 @@
             // 构建详情内容
             let bodyHtml = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
             
-            // 如果数据无效，显示提示和重新采集按钮
+            // 如果数据无效，显示警告提示
             if (!isValid) {
                 bodyHtml = `
                     <div style="background:#2d1f1f;border:1px solid #f87171;padding:10px;border-radius:6px;margin-bottom:15px;">
@@ -827,7 +828,7 @@
             
             // 更新模态框按钮
             const footer = document.getElementById('modal').querySelector('.modal-footer');
-            if (!isValid) {
+            if (canRecollect) {
                 footer.innerHTML = `
                     <button class="btn btn-primary" onclick="recollectNode('${nodeId}')">重新采集</button>
                     <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
@@ -839,6 +840,13 @@
             }
             
             document.getElementById('modal').classList.add('active');
+        }
+        
+        // 检查节点是否支持重新采集
+        function canRecollectNode(nodeId) {
+            // 支持重新采集的节点
+            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products'];
+            return recollectableNodes.includes(nodeId);
         }
         
         // 检查数据是否有效

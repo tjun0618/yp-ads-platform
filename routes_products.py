@@ -3420,8 +3420,16 @@ def api_workflow_status(merchant_id):
 
 @bp.route("/api/workflow/merchant/<merchant_id>", methods=["POST"])
 def api_workflow_merchant(merchant_id):
-    """Step 1: 获取商户信息"""
+    """Step 1: 获取商户信息
+
+    参数：
+    - force: 如果为 true，触发重新采集商户商品
+    """
     try:
+        # 检查是否强制重新采集
+        data = request.get_json(silent=True) or {}
+        force_recollect = data.get("force", False)
+
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
@@ -3430,9 +3438,9 @@ def api_workflow_merchant(merchant_id):
             (merchant_id,),
         )
         merchant = cur.fetchone()
-        conn.close()
 
-        if merchant:
+        if merchant and not force_recollect:
+            conn.close()
             return jsonify(
                 {
                     "success": True,
@@ -3444,8 +3452,58 @@ def api_workflow_merchant(merchant_id):
                     "summary": f"商户: {merchant['merchant_name']}",
                 }
             )
-        else:
-            return jsonify({"success": False, "error": "商户不存在"})
+
+        conn.close()
+
+        # 如果商户不存在或强制重新采集，触发 YP 采集
+        if force_recollect or not merchant:
+            # 触发 YP 采集
+            from app_config import YP_COLLECT_SCRIPT, PYTHON_EXE
+
+            if not YP_COLLECT_SCRIPT.exists():
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "download_only.py 脚本不存在",
+                    }
+                )
+
+            merchant_name = merchant["merchant_name"] if merchant else merchant_id
+
+            # 创建启动脚本
+            bat_file = BASE_DIR / f"_launch_yp_single_{merchant_id}.bat"
+            bat_content = (
+                f'@echo off\r\ncd /d "{BASE_DIR}"\r\ntitle 采集商品 {merchant_name}\r\n'
+                f'"{PYTHON_EXE}" -X utf8 "{YP_COLLECT_SCRIPT}" --single {merchant_id}\r\n'
+                f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
+            )
+            bat_file.write_text(bat_content, encoding="gbk")
+
+            # 启动新窗口
+            subprocess.Popen(
+                [
+                    "cmd.exe",
+                    "/c",
+                    "start",
+                    f"采集_{merchant_name}",
+                    "cmd.exe",
+                    "/k",
+                    str(bat_file),
+                ],
+                cwd=str(BASE_DIR),
+                shell=False,
+            )
+
+            return jsonify(
+                {
+                    "success": True,
+                    "collecting": True,
+                    "message": f"商户 {merchant_name} 商品采集已启动",
+                    "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+                }
+            )
+
+        return jsonify({"success": False, "error": "商户不存在"})
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -3511,7 +3569,7 @@ def api_workflow_keywords(merchant_id):
     1. 先检查数据库中是否已有数据
     2. 如果没有，尝试 Google Suggest API
     3. 如果 Google 失败，降级到 Bing 搜索
-    
+
     参数：
     - force: 如果为 true，强制重新采集
     """
@@ -3519,7 +3577,7 @@ def api_workflow_keywords(merchant_id):
         # 检查是否强制重新采集
         data = request.get_json(silent=True) or {}
         force_recollect = data.get("force", False)
-        
+
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
@@ -4132,8 +4190,16 @@ def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
 
 @bp.route("/api/workflow/products/<merchant_id>", methods=["POST"])
 def api_workflow_products(merchant_id):
-    """Step 5: 获取商品列表"""
+    """Step 5: 获取商品列表
+    
+    参数：
+    - force: 如果为 true，触发重新采集商品
+    """
     try:
+        # 检查是否强制重新采集
+        data = request.get_json(silent=True) or {}
+        force_recollect = data.get("force", False)
+        
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
@@ -4154,9 +4220,9 @@ def api_workflow_products(merchant_id):
         total = len(products)
         with_amazon = len([p for p in products if p.get("amz_title")])
 
-        conn.close()
-
-        if total > 0:
+        # 如果有商品且不是强制重新采集，直接返回
+        if total > 0 and not force_recollect:
+            conn.close()
             return jsonify(
                 {
                     "success": True,
@@ -4168,14 +4234,52 @@ def api_workflow_products(merchant_id):
                     "summary": f"共 {total} 个商品，{with_amazon} 个有亚马逊数据",
                 }
             )
-        else:
+        
+        # 获取商户名称
+        cur.execute(
+            "SELECT merchant_name FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
+            (merchant_id,),
+        )
+        merchant = cur.fetchone()
+        conn.close()
+        
+        merchant_name = merchant["merchant_name"] if merchant else merchant_id
+        
+        # 如果没有商品或强制重新采集，触发 YP 采集
+        from app_config import YP_COLLECT_SCRIPT, PYTHON_EXE
+        
+        if not YP_COLLECT_SCRIPT.exists():
             return jsonify(
                 {
                     "success": False,
-                    "error": "暂无商品，请先下载商品列表",
-                    "hint": "运行 download_only.py 下载商品",
+                    "error": "download_only.py 脚本不存在",
                 }
             )
+        
+        # 创建启动脚本
+        bat_file = BASE_DIR / f"_launch_yp_single_{merchant_id}.bat"
+        bat_content = (
+            f'@echo off\r\ncd /d "{BASE_DIR}"\r\ntitle 采集商品 {merchant_name}\r\n'
+            f'"{PYTHON_EXE}" -X utf8 "{YP_COLLECT_SCRIPT}" --single {merchant_id}\r\n'
+            f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
+        )
+        bat_file.write_text(bat_content, encoding="gbk")
+        
+        # 启动新窗口
+        subprocess.Popen(
+            ["cmd.exe", "/c", "start", f"采集_{merchant_name}", "cmd.exe", "/k", str(bat_file)],
+            cwd=str(BASE_DIR),
+            shell=False,
+        )
+        
+        return jsonify(
+            {
+                "success": True,
+                "collecting": True,
+                "message": f"商户 {merchant_name} 商品采集已启动",
+                "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
