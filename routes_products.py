@@ -3747,27 +3747,28 @@ def api_workflow_ads(merchant_id):
         generation_method = None
         ai_error = None
 
-        # 尝试 AI 生成
-        try:
-            ads_plan = _generate_ads_with_ai(product, brand_keywords)
-            if ads_plan:
-                generation_method = "AI"
-        except Exception as e:
-            ai_error = str(e)
-            print(f"[Workflow] AI generation failed: {e}")
+        # 暂时跳过 AI，直接使用规则引擎（AI 调用时间过长）
+        # # 尝试 AI 生成
+        # try:
+        #     ads_plan = _generate_ads_with_ai(product, brand_keywords)
+        #     if ads_plan:
+        #         generation_method = "AI"
+        # except Exception as e:
+        #     ai_error = str(e)
+        #     print(f"[Workflow] AI generation failed: {e}")
 
-        # AI 失败，降级到规则引擎
+        # 直接使用规则引擎
         if not ads_plan:
-            print(f"[Workflow] Falling back to rule engine...")
+            print(f"[Workflow] Using rule engine...")
             try:
                 ads_plan = _generate_ads_with_rules(product, brand_keywords)
                 if ads_plan:
-                    generation_method = "Rule Engine (AI fallback)"
+                    generation_method = "Rule Engine"
             except Exception as e:
                 return jsonify(
                     {
                         "success": False,
-                        "error": f"广告生成失败: AI错误={ai_error}, 规则引擎错误={str(e)}",
+                        "error": f"广告生成失败: 规则引擎错误={str(e)}",
                     }
                 )
 
@@ -3913,8 +3914,8 @@ def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
 
     client = KimiClient(model="kimi-k2.5", api_key=KIMI_API_KEY)
 
-    messages = [{"role": "user", "content": prompt}]
-    result_text = client.chat(messages, stream=False)
+    # KimiClient.chat() 期望字符串参数，不是消息列表
+    result_text = client.chat(prompt, stream=False)
 
     # 解析 JSON
     json_result = None
@@ -3976,8 +3977,22 @@ def _generate_ads_with_rules(product: dict, brand_keywords: list) -> dict:
     commission_rate = (
         float(re.sub(r"[^0-9.]", "", commission_str)) / 100 if commission_str else 0.15
     )
-    rating = float(product.get("rating") or 0)
-    review_count = int(product.get("review_count") or 0)
+    # 解析 rating（格式可能是 "4.4 out of 5 stars" 或纯数字）
+    rating_str = product.get("rating") or "0"
+    if isinstance(rating_str, str):
+        # 提取数字部分
+        rating_match = re.search(r"(\d+\.?\d*)", rating_str)
+        rating = float(rating_match.group(1)) if rating_match else 0.0
+    else:
+        rating = float(rating_str) if rating_str else 0.0
+
+    # 解析 review_count（格式可能是 "(406)" 或纯数字）
+    review_count_str = product.get("review_count") or "0"
+    if isinstance(review_count_str, str):
+        review_count_match = re.search(r"(\d+)", review_count_str)
+        review_count = int(review_count_match.group(1)) if review_count_match else 0
+    else:
+        review_count = int(review_count_str) if review_count_str else 0
     category = product.get("category_path") or ""
     bullet_points = product.get("bullet_points") or ""
 
@@ -4460,12 +4475,18 @@ def _save_ads_plan_to_db(asin: str, ads_plan: dict, product: dict, merchant_id: 
         for camp in campaigns:
             cur.execute(
                 """
-                INSERT INTO ads_campaigns (asin, name, budget_daily, bid_strategy, negative_keywords)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO ads_campaigns (
+                    asin, merchant_id, merchant_name, campaign_name, 
+                    journey_stage, daily_budget_usd, bid_strategy, negative_keywords
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
                 (
                     asin,
+                    merchant_id,
+                    merchant_name,
                     camp.get("name", ""),
+                    camp.get("journey_stage", "Brand"),
                     camp.get("budget_daily", 10),
                     camp.get("bid_strategy", "Manual CPC"),
                     json.dumps(
@@ -4478,7 +4499,7 @@ def _save_ads_plan_to_db(asin: str, ads_plan: dict, product: dict, merchant_id: 
             for ag in camp.get("ad_groups", []):
                 cur.execute(
                     """
-                    INSERT INTO ads_ad_groups (campaign_id, name, keywords, negative_keywords)
+                    INSERT INTO ads_ad_groups (campaign_id, ad_group_name, keywords, negative_keywords)
                     VALUES (%s, %s, %s, %s)
                 """,
                     (
@@ -4503,12 +4524,14 @@ def _save_ads_plan_to_db(asin: str, ads_plan: dict, product: dict, merchant_id: 
 
                     cur.execute(
                         """
-                        INSERT INTO ads_ads (ad_group_id, variant, headlines, descriptions, all_chars_valid)
-                        VALUES (%s, %s, %s, %s, 1)
+                        INSERT INTO ads_ads (ad_group_id, campaign_id, asin, variant, headlines, descriptions, all_chars_valid)
+                        VALUES (%s, %s, %s, %s, %s, %s, 1)
                     """,
                         (
                             ag_id,
-                            variant + 1,
+                            camp_id,
+                            asin,
+                            chr(65 + variant),  # A, B, C
                             json.dumps([hl], ensure_ascii=False),
                             json.dumps([desc], ensure_ascii=False),
                         ),
