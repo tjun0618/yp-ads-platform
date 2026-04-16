@@ -3511,27 +3511,36 @@ def api_workflow_keywords(merchant_id):
     1. 先检查数据库中是否已有数据
     2. 如果没有，尝试 Google Suggest API
     3. 如果 Google 失败，降级到 Bing 搜索
+    
+    参数：
+    - force: 如果为 true，强制重新采集
     """
     try:
+        # 检查是否强制重新采集
+        data = request.get_json(silent=True) or {}
+        force_recollect = data.get("force", False)
+        
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
-        # 1. 检查数据库
-        cur.execute(
-            "SELECT keyword FROM ads_merchant_keywords WHERE merchant_id = %s ORDER BY keyword",
-            (merchant_id,),
-        )
-        keywords = [r["keyword"] for r in cur.fetchall()]
-
-        if keywords:
-            conn.close()
-            return jsonify(
-                {
-                    "success": True,
-                    "data": {"keywords": keywords, "count": len(keywords)},
-                    "summary": f"已获取 {len(keywords)} 个品牌关键词",
-                }
+        # 如果不是强制重新采集，先检查已有数据
+        if not force_recollect:
+            # 1. 检查数据库
+            cur.execute(
+                "SELECT keyword FROM ads_merchant_keywords WHERE merchant_id = %s ORDER BY keyword",
+                (merchant_id,),
             )
+            keywords = [r["keyword"] for r in cur.fetchall()]
+
+            if keywords:
+                conn.close()
+                return jsonify(
+                    {
+                        "success": True,
+                        "data": {"keywords": keywords, "count": len(keywords)},
+                        "summary": f"已获取 {len(keywords)} 个品牌关键词",
+                    }
+                )
 
         # 2. 获取商户信息
         cur.execute(
@@ -3824,87 +3833,98 @@ def api_workflow_semrush(merchant_id):
     1. 先检查数据库中是否已有数据
     2. 如果没有，检查是否有采集结果文件
     3. 如果都没有，触发采集并返回采集状态
+
+    参数：
+    - force: 如果为 true，强制重新采集
     """
     try:
+        # 检查是否强制重新采集
+        data = request.get_json(silent=True) or {}
+        force_recollect = data.get("force", False)
+
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
-        # 1. 检查数据库 (semrush_competitor_data 表)
-        cur.execute(
-            "SELECT id, domain, organic_keywords_count, paid_keywords_count, organic_traffic, paid_traffic, authority_score FROM semrush_competitor_data WHERE merchant_id = %s LIMIT 1",
-            (merchant_id,),
-        )
-        semrush = cur.fetchone()
-
-        if semrush:
-            conn.close()
-            return jsonify(
-                {
-                    "success": True,
-                    "data": {
-                        "has_data": True,
-                        "domain": semrush.get("domain"),
-                        "organic_keywords": semrush.get("organic_keywords_count", 0),
-                        "paid_keywords": semrush.get("paid_keywords_count", 0),
-                        "organic_traffic": semrush.get("organic_traffic", 0),
-                        "paid_traffic": semrush.get("paid_traffic", 0),
-                        "authority_score": semrush.get("authority_score", 0),
-                    },
-                    "summary": f"SEMrush 数据已存在 (域名: {semrush.get('domain')}, 自然词: {semrush.get('organic_keywords_count', 0)}, 付费词: {semrush.get('paid_keywords_count', 0)})",
-                }
+        # 如果不是强制重新采集，先检查已有数据
+        if not force_recollect:
+            # 1. 检查数据库 (semrush_competitor_data 表)
+            cur.execute(
+                "SELECT id, domain, organic_keywords_count, paid_keywords_count, organic_traffic, paid_traffic, authority_score FROM semrush_competitor_data WHERE merchant_id = %s LIMIT 1",
+                (merchant_id,),
             )
+            semrush = cur.fetchone()
 
-        # 2. 检查采集结果文件
-        result_file = BASE_DIR / "temp" / f"semrush_collected_{merchant_id}.json"
-        if result_file.exists():
-            try:
-                import json
-
-                file_data = json.loads(result_file.read_text(encoding="utf-8"))
-
-                # 保存到数据库
-                _save_semrush_to_db(merchant_id, file_data, cur, conn)
-
-                # 从文件数据中提取统计信息
-                semrush_data = file_data.get("data", {})
-                organic_keywords = semrush_data.get("organic_keywords", {})
-                paid_keywords = semrush_data.get("paid_keywords", {})
-                traffic = semrush_data.get("traffic", {})
-
-                organic_count = (
-                    organic_keywords.get("total", 0)
-                    if isinstance(organic_keywords, dict)
-                    else 0
-                )
-                paid_count = (
-                    paid_keywords.get("total", 0)
-                    if isinstance(paid_keywords, dict)
-                    else 0
-                )
-
+            if semrush:
+                conn.close()
                 return jsonify(
                     {
                         "success": True,
                         "data": {
                             "has_data": True,
-                            "domain": file_data.get("domain"),
-                            "organic_keywords": organic_count,
-                            "paid_keywords": paid_count,
-                            "organic_traffic": traffic.get("organic", 0)
-                            if isinstance(traffic, dict)
-                            else 0,
-                            "paid_traffic": traffic.get("paid", 0)
-                            if isinstance(traffic, dict)
-                            else 0,
-                            "authority_score": traffic.get("authority_score", 0)
-                            if isinstance(traffic, dict)
-                            else 0,
+                            "domain": semrush.get("domain"),
+                            "organic_keywords": semrush.get(
+                                "organic_keywords_count", 0
+                            ),
+                            "paid_keywords": semrush.get("paid_keywords_count", 0),
+                            "organic_traffic": semrush.get("organic_traffic", 0),
+                            "paid_traffic": semrush.get("paid_traffic", 0),
+                            "authority_score": semrush.get("authority_score", 0),
                         },
-                        "summary": f"SEMrush 数据已加载 (域名: {file_data.get('domain')}, 自然词: {organic_count}, 付费词: {paid_count})",
+                        "summary": f"SEMrush 数据已存在 (域名: {semrush.get('domain')}, 自然词: {semrush.get('organic_keywords_count', 0)}, 付费词: {semrush.get('paid_keywords_count', 0)})",
                     }
                 )
-            except Exception as e:
-                print(f"[Workflow] 读取 SEMrush 结果文件失败: {e}")
+
+            # 2. 检查采集结果文件
+            result_file = BASE_DIR / "temp" / f"semrush_collected_{merchant_id}.json"
+            if result_file.exists():
+                try:
+                    import json
+
+                    file_data = json.loads(result_file.read_text(encoding="utf-8"))
+
+                    # 保存到数据库
+                    _save_semrush_to_db(merchant_id, file_data, cur, conn)
+
+                    # 从文件数据中提取统计信息
+                    semrush_data = file_data.get("data", {})
+                    organic_keywords = semrush_data.get("organic_keywords", {})
+                    paid_keywords = semrush_data.get("paid_keywords", {})
+                    traffic = semrush_data.get("traffic", {})
+
+                    organic_count = (
+                        organic_keywords.get("total", 0)
+                        if isinstance(organic_keywords, dict)
+                        else 0
+                    )
+                    paid_count = (
+                        paid_keywords.get("total", 0)
+                        if isinstance(paid_keywords, dict)
+                        else 0
+                    )
+
+                    return jsonify(
+                        {
+                            "success": True,
+                            "data": {
+                                "has_data": True,
+                                "domain": file_data.get("domain"),
+                                "organic_keywords": organic_count,
+                                "paid_keywords": paid_count,
+                                "organic_traffic": traffic.get("organic", 0)
+                                if isinstance(traffic, dict)
+                                else 0,
+                                "paid_traffic": traffic.get("paid", 0)
+                                if isinstance(traffic, dict)
+                                else 0,
+                                "authority_score": traffic.get("authority_score", 0)
+                                if isinstance(traffic, dict)
+                                else 0,
+                            },
+                            "summary": f"SEMrush 数据已加载 (域名: {file_data.get('domain')}, 自然词: {organic_count}, 付费词: {paid_count})",
+                        }
+                    )
+                except Exception as e:
+                    print(f"[Workflow] 读取 SEMrush 结果文件失败: {e}")
 
         # 3. 获取商户信息，准备采集
         cur.execute(

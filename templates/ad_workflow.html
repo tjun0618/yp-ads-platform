@@ -805,9 +805,115 @@
             const data = workflowState[nodeId];
             if (!data) return;
             
-            document.getElementById('modalTitle').textContent = getNodeTitle(nodeId) + ' - 详情';
-            document.getElementById('modalBody').innerHTML = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+            const isValid = isDataValid(nodeId, data);
+            const title = getNodeTitle(nodeId) + ' - 详情' + (isValid ? '' : ' (数据无效)');
+            
+            document.getElementById('modalTitle').textContent = title;
+            
+            // 构建详情内容
+            let bodyHtml = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+            
+            // 如果数据无效，显示提示和重新采集按钮
+            if (!isValid) {
+                bodyHtml = `
+                    <div style="background:#2d1f1f;border:1px solid #f87171;padding:10px;border-radius:6px;margin-bottom:15px;">
+                        ⚠️ 检测到数据无效或为空，建议重新采集
+                    </div>
+                    ${bodyHtml}
+                `;
+            }
+            
+            document.getElementById('modalBody').innerHTML = bodyHtml;
+            
+            // 更新模态框按钮
+            const footer = document.getElementById('modal').querySelector('.modal-footer');
+            if (!isValid) {
+                footer.innerHTML = `
+                    <button class="btn btn-primary" onclick="recollectNode('${nodeId}')">重新采集</button>
+                    <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                `;
+            } else {
+                footer.innerHTML = `
+                    <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+                `;
+            }
+            
             document.getElementById('modal').classList.add('active');
+        }
+        
+        // 检查数据是否有效
+        function isDataValid(nodeId, data) {
+            if (!data) return false;
+            
+            // 根据不同节点类型检查数据有效性
+            switch (nodeId) {
+                case 'semrush':
+                    // SEMrush 数据：检查关键字数量是否大于0
+                    const organicKw = parseInt(data.organic_keywords) || 0;
+                    const paidKw = parseInt(data.paid_keywords) || 0;
+                    const organicTraffic = parseInt(data.organic_traffic) || 0;
+                    // 如果所有关键字和流量都是0，认为数据无效
+                    return organicKw > 0 || paidKw > 0 || organicTraffic > 0;
+                    
+                case 'keywords':
+                    // 关键词数据：检查是否有关键词
+                    return data.keywords && data.keywords.length > 0;
+                    
+                case 'merchant':
+                    // 商户数据：检查是否有商户ID
+                    return data.merchant_id || data.merchant_name;
+                    
+                case 'products':
+                    // 商品数据：检查是否有商品
+                    return data.products && data.products.length > 0;
+                    
+                case 'amazon':
+                    // 亚马逊数据：检查是否有商品信息
+                    return data.title || data.asin;
+                    
+                default:
+                    // 默认：有数据就认为有效
+                    return true;
+            }
+        }
+        
+        // 强制重新采集
+        async function recollectNode(nodeId) {
+            closeModal();
+            
+            // 清除当前节点的数据
+            delete workflowState[nodeId];
+            
+            // 更新节点状态为运行中
+            updateNodeStatus(nodeId, 'running');
+            log(`开始重新采集: ${getNodeTitle(nodeId)}`, 'info');
+            
+            try {
+                // 调用 API，传递 force=true 强制重新采集
+                const result = await callApi(nodeId, { force: true });
+                
+                if (result.success) {
+                    if (result.collecting) {
+                        // 采集已启动
+                        updateNodeStatus(nodeId, 'ready');
+                        log(`${getNodeTitle(nodeId)}: ${result.message}`, 'info');
+                        if (result.hint) {
+                            log(`提示: ${result.hint}`, 'info');
+                        }
+                    } else {
+                        // 采集完成
+                        workflowState[nodeId] = result.data;
+                        updateNodeStatus(nodeId, 'completed', result.summary);
+                        log(`${getNodeTitle(nodeId)} 重新采集完成`, 'success');
+                    }
+                } else {
+                    updateNodeStatus(nodeId, 'error');
+                    log(`${getNodeTitle(nodeId)} 重新采集失败: ${result.error}`, 'error');
+                }
+            } catch (e) {
+                updateNodeStatus(nodeId, 'error');
+                log(`${getNodeTitle(nodeId)} 重新采集异常: ${e.message}`, 'error');
+            }
         }
         
         // 关闭模态框
