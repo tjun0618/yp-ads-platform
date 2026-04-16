@@ -56,7 +56,21 @@ function startService() {
   var scriptPath = fso.GetParentFolderName(location.pathname.replace(/^\/+/,''));
   
   shell.CurrentDirectory = scriptPath;
-  shell.Run('cmd /c start "" python -X utf8 ads_manager.py', 1, false);
+  
+  // 关闭旧进程
+  document.getElementById('status').innerHTML = 'Closing old processes...';
+  
+  // 通过端口 5055 查找并关闭进程
+  try {
+    var cmd = 'cmd /c "for /f "tokens=5" %a in (\'netstat -ano ^| findstr :5055 ^| findstr LISTENING\') do taskkill /F /PID %a"';
+    shell.Run(cmd, 0, true);
+  } catch(e) {}
+  
+  // 等待端口释放
+  WScript.Sleep(2000);
+  
+  // 启动新服务
+  shell.Run('cmd /c start "YP Ads Platform" python -X utf8 ads_manager.py', 1, false);
   
   document.getElementById('status').innerHTML = 'Service starting... Please wait a few seconds and click "Open Browser"';
 }
