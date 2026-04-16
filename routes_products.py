@@ -4203,6 +4203,22 @@ def api_workflow_products(merchant_id):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
+        # 先获取真实总数（不受 LIMIT 影响）
+        cur.execute(
+            """
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN a.asin IS NOT NULL THEN 1 ELSE 0 END) as with_amazon
+            FROM yp_us_products p
+            LEFT JOIN amazon_product_details a ON p.asin = a.asin
+            WHERE p.yp_merchant_id = %s
+            """,
+            (merchant_id,),
+        )
+        stats = cur.fetchone()
+        total = stats["total"] or 0
+        with_amazon = stats["with_amazon"] or 0
+
+        # 获取商品列表（最多 50 个）
         cur.execute(
             """
             SELECT p.asin, p.product_name, p.price, p.commission, p.tracking_url,
@@ -4210,15 +4226,12 @@ def api_workflow_products(merchant_id):
             FROM yp_us_products p
             LEFT JOIN amazon_product_details a ON p.asin = a.asin
             WHERE p.yp_merchant_id = %s
+            ORDER BY p.commission DESC
             LIMIT 50
             """,
             (merchant_id,),
         )
         products = cur.fetchall()
-
-        # 统计
-        total = len(products)
-        with_amazon = len([p for p in products if p.get("amz_title")])
 
         # 如果有商品且不是强制重新采集，直接返回
         if total > 0 and not force_recollect:

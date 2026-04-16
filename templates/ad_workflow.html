@@ -323,7 +323,9 @@
                         <span class="node-status status-pending" id="status-amazon">待执行</span>
                         <div class="node-data" id="data-amazon"></div>
                         <div class="edit-section" id="edit-amazon" style="display:none;" onclick="event.stopPropagation()">
-                            <label style="font-size:12px;color:#888;margin-bottom:5px;display:block;">选择商品ASIN:</label>
+                            <label style="font-size:12px;color:#888;margin-bottom:5px;display:block;">输入商品ASIN:</label>
+                            <input type="text" class="edit-input" id="input-asin" placeholder="如: B08XYZ1234" style="margin-bottom:8px;" maxlength="20">
+                            <label style="font-size:11px;color:#aaa;margin-bottom:3px;display:block;">或从列表选择（显示前50个）:</label>
                             <select class="edit-input" id="select-asin" style="margin-bottom:8px;">
                                 <option value="">-- 请选择商品 --</option>
                             </select>
@@ -1025,14 +1027,15 @@
                 
                 if (result.success && result.data && result.data.products) {
                     const products = result.data.products;
-                    select.innerHTML = '<option value="">-- 请选择商品 --</option>';
+                    const total = result.data.total || products.length;
+                    select.innerHTML = `<option value="">-- 请选择商品 (共${total}个) --</option>`;
                     products.forEach(p => {
                         const option = document.createElement('option');
                         option.value = p.asin;
                         option.textContent = `${p.asin} - ${p.product_name || 'N/A'}`;
                         select.appendChild(option);
                     });
-                    log(`已加载 ${products.length} 个商品`, 'info');
+                    log(`已加载 ${products.length} 个商品（共 ${total} 个）`, 'info');
                 } else {
                     select.innerHTML = '<option value="">-- 无商品数据 --</option>';
                     log('请先获取商品列表', 'error');
@@ -1050,11 +1053,19 @@
         
         // 采集单个商品的亚马逊信息
         async function collectAmazonByAsin() {
-            const select = document.getElementById('select-asin');
-            const asin = select.value;
+            // 优先使用输入框的值，如果没有则使用下拉框
+            const inputAsin = document.getElementById('input-asin').value.trim().toUpperCase();
+            const selectAsin = document.getElementById('select-asin').value;
+            const asin = inputAsin || selectAsin;
             
             if (!asin) {
-                log('请选择商品', 'error');
+                log('请输入或选择商品ASIN', 'error');
+                return;
+            }
+            
+            // 验证 ASIN 格式（10位字母数字）
+            if (!/^[A-Z0-9]{10}$/.test(asin)) {
+                log('ASIN 格式不正确，应为10位字母数字', 'error');
                 return;
             }
             
