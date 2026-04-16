@@ -75,10 +75,14 @@ AD_WORD_REPLACEMENTS = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 异步广告生成任务状态存储
+# 异步任务状态存储
 # ─────────────────────────────────────────────────────────────────────────────
 _ads_generation_tasks = {}  # {task_id: {status, result, error, created_at}}
 _ads_task_lock = threading.Lock()
+
+# 采集任务状态存储
+_collect_tasks = {}  # {task_id: {status, merchant_id, node_type, started_at, completed_at}}
+_collect_task_lock = threading.Lock()
 
 
 def _get_task_id(asin: str, merchant_id: str) -> str:
@@ -3595,28 +3599,24 @@ def api_workflow_status(merchant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
-@bp.route("/api/workflow/merchant/<merchant_id>", methods=["POST"])
+@bp.route("/api/workflow/merchant/<merchant_id>", methods=["GET", "POST"])
 def api_workflow_merchant(merchant_id):
     """Step 1: 获取商户信息
 
-    参数：
-    - force: 如果为 true，触发重新采集商户商品
+    1. 查询 yp_merchants 表
+    2. 如果不存在，调用 YP API 获取商户信息并保存
     """
     try:
-        # 检查是否强制重新采集
-        data = request.get_json(silent=True) or {}
-        force_recollect = data.get("force", False)
-
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
         cur.execute(
-            "SELECT merchant_id, merchant_name, website FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
+            "SELECT merchant_id, merchant_name, website, avg_payout, cookie_days, country FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
             (merchant_id,),
         )
         merchant = cur.fetchone()
 
-        if merchant and not force_recollect:
+        if merchant:
             conn.close()
             return jsonify(
                 {
@@ -3625,62 +3625,106 @@ def api_workflow_merchant(merchant_id):
                         "merchant_id": merchant["merchant_id"],
                         "merchant_name": merchant["merchant_name"],
                         "website": merchant["website"],
+                        "avg_payout": float(merchant["avg_payout"])
+                        if merchant["avg_payout"]
+                        else 0,
+                        "cookie_days": merchant["cookie_days"],
+                        "country": merchant["country"],
                     },
                     "summary": f"商户: {merchant['merchant_name']}",
                 }
             )
 
+        # 商户不存在，调用 YP API 获取
         conn.close()
 
-        # 如果商户不存在或强制重新采集，触发 YP 采集
-        if force_recollect or not merchant:
-            # 触发 YP 采集
-            from app_config import YP_COLLECT_SCRIPT, PYTHON_EXE
+        import requests
 
-            if not YP_COLLECT_SCRIPT.exists():
+        YP_API_URL = "https://www.yeahpromos.com/index/getadvert/getadvert"
+        YP_SITE_ID = "12002"
+        YP_TOKEN = "7951dc7484fa9f9d"
+
+        try:
+            resp = requests.get(
+                YP_API_URL,
+                headers={"token": YP_TOKEN},
+                params={
+                    "site_id": YP_SITE_ID,
+                    "advert_id": merchant_id,
+                    "page": 1,
+                    "limit": 100,
+                },
+                timeout=30,
+            )
+            data = resp.json()
+
+            if data.get("code") != "100000":
                 return jsonify(
                     {
                         "success": False,
-                        "error": "download_only.py 脚本不存在",
+                        "error": f"YP API 错误: {data.get('msg', '未知错误')}",
                     }
                 )
 
-            merchant_name = merchant["merchant_name"] if merchant else merchant_id
+            merchants = data.get("data", {}).get("Data", [])
+            if not merchants:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "商户不存在",
+                        "hint": "请检查商户ID是否正确",
+                    }
+                )
 
-            # 创建启动脚本
-            bat_file = BASE_DIR / f"_launch_yp_single_{merchant_id}.bat"
-            bat_content = (
-                f'@echo off\r\ncd /d "{BASE_DIR}"\r\ntitle 采集商品 {merchant_name}\r\n'
-                f'"{PYTHON_EXE}" -X utf8 "{YP_COLLECT_SCRIPT}" --single {merchant_id}\r\n'
-                f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
-            )
-            bat_file.write_text(bat_content, encoding="gbk")
+            # 取第一条数据
+            m = merchants[0]
+            merchant_name = m.get("merchant_name", merchant_id)
+            website = m.get("website", "")
+            avg_payout = m.get("avg_payout", 0) or 0
+            cookie_days = m.get("cookie_days", 0) or 0
+            country = m.get("country", "US")
 
-            # 启动新窗口
-            subprocess.Popen(
-                [
-                    "cmd.exe",
-                    "/c",
-                    "start",
-                    "",  # 窗口标题（空字符串）
-                    "cmd.exe",
-                    "/k",
-                    str(bat_file),
-                ],
-                cwd=str(BASE_DIR),
-                shell=False,
+            # 保存到数据库
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO yp_merchants (merchant_id, merchant_name, website, avg_payout, cookie_days, country)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE 
+                    merchant_name = VALUES(merchant_name),
+                    website = VALUES(website),
+                    avg_payout = VALUES(avg_payout),
+                    cookie_days = VALUES(cookie_days),
+                    country = VALUES(country)
+            """,
+                (merchant_id, merchant_name, website, avg_payout, cookie_days, country),
             )
+            conn.commit()
+            conn.close()
 
             return jsonify(
                 {
                     "success": True,
-                    "collecting": True,
-                    "message": f"商户 {merchant_name} 商品采集已启动",
-                    "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+                    "data": {
+                        "merchant_id": merchant_id,
+                        "merchant_name": merchant_name,
+                        "website": website,
+                        "avg_payout": float(avg_payout),
+                        "cookie_days": cookie_days,
+                        "country": country,
+                    },
+                    "summary": f"商户: {merchant_name}",
                 }
             )
 
-        return jsonify({"success": False, "error": "商户不存在"})
+        except requests.exceptions.RequestException as e:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"YP API 请求失败: {str(e)}",
+                }
+            )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -4365,10 +4409,12 @@ def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
     )
 
 
-@bp.route("/api/workflow/products/<merchant_id>", methods=["POST"])
+@bp.route("/api/workflow/products/<merchant_id>", methods=["GET", "POST"])
 def api_workflow_products(merchant_id):
     """Step 5: 获取商品列表
 
+    GET: 只查询商品列表，不触发采集
+    POST: 查询商品列表，不存在时触发采集
     参数：
     - force: 如果为 true，触发重新采集商品
     """
@@ -4380,14 +4426,14 @@ def api_workflow_products(merchant_id):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
-        # 先获取真实总数（不受 LIMIT 影响）
+        # 先查询 yp_products 表（原始数据）
         cur.execute(
             """
             SELECT COUNT(*) as total,
                    SUM(CASE WHEN a.asin IS NOT NULL THEN 1 ELSE 0 END) as with_amazon
-            FROM yp_us_products p
+            FROM yp_products p
             LEFT JOIN amazon_product_details a ON p.asin = a.asin
-            WHERE p.yp_merchant_id = %s
+            WHERE p.merchant_id = %s
             """,
             (merchant_id,),
         )
@@ -4400,9 +4446,9 @@ def api_workflow_products(merchant_id):
             """
             SELECT p.asin, p.product_name, p.price, p.commission, p.tracking_url,
                    a.title as amz_title, a.rating, a.review_count
-            FROM yp_us_products p
+            FROM yp_products p
             LEFT JOIN amazon_product_details a ON p.asin = a.asin
-            WHERE p.yp_merchant_id = %s
+            WHERE p.merchant_id = %s
             ORDER BY p.commission DESC
             LIMIT 50
             """,
@@ -4425,7 +4471,18 @@ def api_workflow_products(merchant_id):
                 }
             )
 
-        # 获取商户名称
+        # GET 请求只查询，不触发采集
+        if request.method == "GET":
+            conn.close()
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "暂无商品数据",
+                    "data": {"products": [], "total": 0, "with_amazon": 0},
+                }
+            )
+
+        # POST 请求：获取商户名称并触发采集
         cur.execute(
             "SELECT merchant_name FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
             (merchant_id,),
@@ -4470,12 +4527,16 @@ def api_workflow_products(merchant_id):
             shell=False,
         )
 
+        # 返回 task_id 让前端轮询
+        task_id = f"products_{merchant_id}"
+
         return jsonify(
             {
                 "success": True,
                 "collecting": True,
+                "task_id": task_id,
                 "message": f"商户 {merchant_name} 商品采集已启动",
-                "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+                "hint": "请在弹窗中完成采集",
             }
         )
 
@@ -4847,6 +4908,70 @@ def api_workflow_ads_status(task_id):
         response["message"] = "广告正在生成中，请稍后..."
     else:
         response["message"] = "任务等待中..."
+
+    return jsonify(response)
+
+
+@bp.route("/api/workflow/collect/status/<task_id>", methods=["GET"])
+def api_workflow_collect_status(task_id):
+    """
+    查询采集任务状态
+
+    返回：
+    - status: running | completed | failed
+    - merchant_id: 商户ID
+    - node_type: 节点类型 (products, amazon, semrush 等)
+    """
+    global _collect_tasks
+
+    with _collect_task_lock:
+        if task_id not in _collect_tasks:
+            return jsonify({"success": False, "error": "任务不存在"})
+        task = _collect_tasks[task_id].copy()
+
+    status = task.get("status")
+    response = {
+        "success": True,
+        "task_id": task_id,
+        "status": status,
+        "merchant_id": task.get("merchant_id"),
+        "node_type": task.get("node_type"),
+    }
+
+    if status == "completed":
+        # 查询采集结果
+        merchant_id = task.get("merchant_id")
+        node_type = task.get("node_type")
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        if node_type == "products":
+            # 查询商品数量
+            cur.execute(
+                """
+                SELECT COUNT(*) as total,
+                       SUM(CASE WHEN price IS NOT NULL THEN 1 ELSE 0 END) as with_price
+                FROM yp_us_products WHERE yp_merchant_id = %s
+            """,
+                (merchant_id,),
+            )
+            stats = cur.fetchone()
+            response["data"] = {
+                "total": stats["total"] or 0,
+                "with_price": stats["with_price"] or 0,
+            }
+            response["summary"] = (
+                f"共 {stats['total']} 个商品，{stats['with_price']} 个有价格"
+            )
+
+        conn.close()
+        response["message"] = "采集完成"
+
+    elif status == "failed":
+        response["error"] = task.get("error", "采集失败")
+    else:
+        response["message"] = "采集进行中..."
 
     return jsonify(response)
 

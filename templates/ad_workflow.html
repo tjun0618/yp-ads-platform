@@ -656,21 +656,27 @@
             try {
                 const result = await callApi(nodeId);
                 if (result.success) {
-                    // 检查是否是异步任务
+                    // 检查是否是异步任务（广告生成）
                     if (result.async && result.task_id) {
+                        updateNodeStatus(nodeId, 'running');
                         log(`${getNodeTitle(nodeId)}: ${result.message}`, 'info');
                         log(`正在后台生成，请稍候...`, 'info');
                         
                         // 开始轮询
                         await pollTaskStatus(nodeId, result.task_id);
                     }
-                    // 检查是否是"采集已启动"状态
+                    // 检查是否是"采集已启动"状态（商品采集）
                     else if (result.collecting) {
-                        // 采集已启动，不标记为完成，显示提示
-                        updateNodeStatus(nodeId, 'ready');
+                        // 节点保持转动状态
+                        updateNodeStatus(nodeId, 'running');
                         log(`${getNodeTitle(nodeId)}: ${result.message}`, 'info');
                         if (result.hint) {
                             log(`提示: ${result.hint}`, 'info');
+                        }
+                        
+                        // 开始轮询检查采集状态
+                        if (result.task_id) {
+                            await pollCollectStatus(nodeId, result.task_id);
                         }
                     } else {
                         // 真正完成
@@ -680,11 +686,6 @@
                     }
                 } else {
                     updateNodeStatus(nodeId, 'error');
-                    // 特殊处理商户不存在的情况
-                    if (nodeId === 'merchant' && result.error && result.error.includes('不存在')) {
-                        log(`商户不存在，正在尝试自动采集...`, 'info');
-                        log(`提示：如果采集超时，请先在"YP采集"页面采集商户`, 'info');
-                    }
                     log(`${getNodeTitle(nodeId)} 失败: ${result.error}`, 'error');
                     
                     // 显示帮助信息
@@ -696,6 +697,45 @@
                 updateNodeStatus(nodeId, 'error');
                 log(`${getNodeTitle(nodeId)} 异常: ${e.message}`, 'error');
             }
+        }
+        
+        // 轮询采集状态（检查数据库中是否有商品数据）
+        async function pollCollectStatus(nodeId, taskId) {
+            const maxAttempts = 120;  // 最多轮询 120 次（约 4 分钟）
+            const interval = 2000;  // 每 2 秒轮询一次
+            
+            for (let i = 0; i < maxAttempts; i++) {
+                await new Promise(resolve => setTimeout(resolve, interval));
+                
+                try {
+                    const merchantId = workflowState.merchantId;
+                    
+                    // 检查商品是否存在
+                    const response = await fetch(`/api/workflow/products/${merchantId}`);
+                    const result = await response.json();
+                    
+                    console.log(`[Poll ${i+1}] Products check:`, result.success, result.data?.total);
+                    
+                    if (result.success && result.data && result.data.total > 0) {
+                        // 采集完成，有数据了
+                        workflowState[nodeId] = result.data;
+                        updateNodeStatus(nodeId, 'completed', `共 ${result.data.total} 个商品`);
+                        log(`${getNodeTitle(nodeId)} 完成，共 ${result.data.total} 个商品`, 'success');
+                        return;
+                    }
+                    
+                    // 每 10 次输出一次进度
+                    if ((i + 1) % 10 === 0) {
+                        log(`等待采集完成... (${i + 1}/${maxAttempts})`, 'info');
+                    }
+                } catch (e) {
+                    console.error(`[Poll ${i+1}] Error:`, e);
+                }
+            }
+            
+            // 超时
+            updateNodeStatus(nodeId, 'ready');
+            log(`${getNodeTitle(nodeId)} 采集超时，请稍后手动刷新`, 'error');
         }
         
         // 轮询任务状态

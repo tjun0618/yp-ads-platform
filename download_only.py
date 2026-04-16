@@ -84,10 +84,15 @@ def log(tag, msg):
 
 # ─── MySQL 工具 ────────────────────────────────────────────────────────────
 def _clean_price(raw) -> str | None:
-    """把 '$12.99' / '12.99' / '' 等清洗为纯数字字符串，或 None（decimal 列友好）"""
+    """把 '$12.99' / 'USD 155' / '12.99' / '' 等清洗为纯数字字符串，或 None（decimal 列友好）"""
     if raw is None:
         return None
-    s = str(raw).strip().lstrip("$").strip()
+    s = str(raw).strip()
+    # 处理 "USD 155" 格式
+    if s.upper().startswith("USD "):
+        s = s[4:].strip()
+    # 处理 "$155" 格式
+    s = s.lstrip("$").strip()
     # 去掉千分位逗号
     s = s.replace(",", "")
     # 只保留数字和小数点
@@ -111,6 +116,23 @@ ON DUPLICATE KEY UPDATE
     tracking_url   = VALUES(tracking_url),
     scraped_at     = VALUES(scraped_at)
 """
+
+UPSERT_MERCHANT_SQL = """
+INSERT INTO yp_merchants (merchant_id, merchant_name, country)
+VALUES (%s, %s, 'US - United States(US)')
+ON DUPLICATE KEY UPDATE merchant_name = VALUES(merchant_name)
+"""
+
+
+def ensure_merchant(conn, merchant_id: str, merchant_name: str):
+    """确保商户记录存在"""
+    try:
+        cur = conn.cursor()
+        cur.execute(UPSERT_MERCHANT_SQL, (merchant_id, merchant_name))
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        log("MAIN", f"创建商户记录失败: {e}")
 
 
 def bulk_upsert_mysql(conn, products: list, batch_size: int = 500):
@@ -554,6 +576,9 @@ def main():
                         db_conn.ping(reconnect=True, attempts=3, delay=2)
                     except Exception:
                         db_conn = mysql.connector.connect(**DB_CONFIG)
+
+                    # 确保商户记录存在
+                    ensure_merchant(db_conn, mid, name)
 
                     n = bulk_upsert_mysql(db_conn, products_this)
                     total_added += n
