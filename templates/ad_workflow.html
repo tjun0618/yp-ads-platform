@@ -700,7 +700,7 @@
         
         // 轮询任务状态
         async function pollTaskStatus(nodeId, taskId) {
-            const maxAttempts = 60;  // 最多轮询 60 次（约 2 分钟）
+            const maxAttempts = 90;  // 最多轮询 90 次（约 3 分钟）
             const interval = 2000;  // 每 2 秒轮询一次
             
             for (let i = 0; i < maxAttempts; i++) {
@@ -721,6 +721,8 @@
                         return;
                     } else if (result.status === 'generating') {
                         log(`AI 正在生成广告方案... (${i + 1}/${maxAttempts})`, 'info');
+                    } else if (result.status === 'pending') {
+                        log(`任务等待中... (${i + 1}/${maxAttempts})`, 'info');
                     }
                 } catch (e) {
                     log(`轮询状态失败: ${e.message}`, 'error');

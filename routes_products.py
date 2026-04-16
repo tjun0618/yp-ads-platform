@@ -92,6 +92,11 @@ def _background_generate_ads(
     """后台线程：生成广告方案"""
     global _ads_generation_tasks
 
+    print(f"[Background] Starting task {task_id}...")
+    print(
+        f"[Background] Product: {product.get('asin')} - {product.get('amz_title') or product.get('product_name')}"
+    )
+
     try:
         # 更新状态为进行中
         with _ads_task_lock:
@@ -106,9 +111,11 @@ def _background_generate_ads(
         ai_error = None
 
         try:
+            print(f"[Background] Trying AI generation...")
             ads_plan = _generate_ads_with_ai(product, brand_keywords)
             if ads_plan:
                 generation_method = "AI"
+                print(f"[Background] AI generation succeeded!")
         except Exception as e:
             ai_error = str(e)
             print(f"[Background] AI generation failed: {e}")
@@ -120,7 +127,9 @@ def _background_generate_ads(
                 ads_plan = _generate_ads_with_rules(product, brand_keywords)
                 if ads_plan:
                     generation_method = "Rule Engine (AI fallback)"
+                    print(f"[Background] Rule engine succeeded!")
             except Exception as e:
+                print(f"[Background] Rule engine failed: {e}")
                 raise Exception(f"AI error: {ai_error}, Rule engine error: {str(e)}")
 
         if not ads_plan:
