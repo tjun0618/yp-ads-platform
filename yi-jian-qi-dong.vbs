@@ -1,7 +1,7 @@
 Option Explicit
 
 Dim WshShell, FSO, ProjectDir
-Dim oExec, sOut, PID, arr, i
+Dim oExec, sOut, PID, arr
 
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO      = CreateObject("Scripting.FileSystemObject")
@@ -33,23 +33,13 @@ WScript.Sleep 2000
 WshShell.CurrentDirectory = ProjectDir
 WshShell.Run "python -X utf8 ads_manager.py", 1, False
 
-' 等待服务启动（最多等待 30 秒）
-For i = 1 To 30
-    WScript.Sleep 1000
-    On Error Resume Next
-    Set oExec = WshShell.Exec("netstat -ano | findstr :5055 | findstr LISTENING")
-    Do While oExec.Status = 0
-        WScript.Sleep 100
-    Loop
-    sOut = oExec.StdOut.ReadAll
-    On Error GoTo 0
-    If Len(sOut) > 0 Then
-        Exit For
-    End If
-Next
+' 等待服务启动（固定等待8秒）
+WScript.Sleep 8000
 
 ' 打开浏览器
+On Error Resume Next
 WshShell.Run "http://localhost:5055/launcher"
+On Error GoTo 0
 
 Set WshShell = Nothing
 Set FSO      = Nothing
