@@ -1,3 +1,5 @@
+Dim WshShell, FSO, oExec, sOut, lines, line, parts, pid
+
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO = CreateObject("Scripting.FileSystemObject")
 
@@ -5,7 +7,6 @@ WshShell.CurrentDirectory = FSO.GetParentFolderName(WScript.ScriptFullName)
 
 ' 先关闭旧进程（通过端口 5055 查找）
 On Error Resume Next
-Dim oExec, sOut, lines, line, parts, pid
 Set oExec = WshShell.Exec("cmd /c netstat -ano | findstr :5055 | findstr LISTENING")
 If Err.Number = 0 Then
     Do While oExec.Status = 0

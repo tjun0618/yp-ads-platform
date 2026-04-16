@@ -2,6 +2,7 @@ Option Explicit
 
 Dim WshShell, FSO, ProjectDir, ps1Path
 Dim oExec, sOut, isRunning, i
+Dim lines, line, parts, pid
 
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO      = CreateObject("Scripting.FileSystemObject")
@@ -20,7 +21,6 @@ If Err.Number = 0 Then
     
     If Len(sOut) > 0 And InStr(sOut, "5055") > 0 Then
         ' 提取 PID 并关闭
-        Dim lines, line, parts, pid
         lines = Split(sOut, vbCrLf)
         For Each line In lines
             If InStr(line, "5055") > 0 And Len(Trim(line)) > 0 Then
