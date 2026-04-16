@@ -1,0 +1,156 @@
+agents:
+  # ─────────────────────────────────────────────────────────────
+  # 主调度 Agent - 理解用户意图，调度子Agent
+  # ─────────────────────────────────────────────────────────────
+  orchestrator:
+    id: orchestrator
+    name: "系统调度员"
+    description: "理解用户意图，调度子Agent完成任务"
+    model: ernie-4.0-8k
+    role: |
+      你是 YP Affiliate 系统的主调度员。
+      你的职责是理解用户意图，将任务分解，并调度合适的子Agent执行。
+      你需要协调多个Agent的工作，汇总结果返回给用户。
+    
+    capabilities:
+      - intent_recognition
+      - task_decomposition
+      - agent_scheduling
+      - result_summarization
+    
+    sub_agents:
+      - ad_creator
+      - scraper
+      - analyst
+    
+    tools:
+      - db_query
+    
+    examples:
+      - input: "帮我为这个商品生成广告"
+        intent: ad_creation
+        agent: ad_creator
+      - input: "采集这个商户的关键词"
+        intent: keyword_scraping
+        agent: scraper
+      - input: "分析一下这个商户的数据"
+        intent: data_analysis
+        agent: analyst
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 广告创作 Agent - 基于 Google Ads 技能生成广告方案
+  # ─────────────────────────────────────────────────────────────
+  ad_creator:
+    id: ad_creator
+    name: "广告创作专家"
+    description: "基于Google Ads技能，为产品生成完整广告方案"
+    model: ernie-4.0-8k
+    role: |
+      你是一位专业的 Google Ads 广告策划专家。
+      你拥有10年+ 美国市场 Google Ads 联盟营销投放经验。
+      你擅长为亚马逊联盟商品制作高效广告方案。
+      你的目标是帮助用户获得最大 ROI。
+    
+    skills:
+      - google-ads-v5.0
+    
+    tools:
+      - db_query
+      - db_write
+      - file_write
+    
+    workflow:
+      - step: 1
+        name: "获取产品信息"
+        action: "query_product"
+        tool: db_query
+      - step: 2
+        name: "获取Amazon数据"
+        action: "query_amazon"
+        tool: db_query
+      - step: 3
+        name: "获取品牌关键词"
+        action: "query_keywords"
+        tool: db_query
+      - step: 4
+        name: "执行技能生成广告"
+        action: "generate_ads"
+        skill: google-ads-v5.0
+      - step: 5
+        name: "保存广告方案"
+        action: "save_plan"
+        tool: db_write
+    
+    output_format: json
+    timeout: 180
+    retry: 2
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 采集 Agent - 采集各类平台数据
+  # ─────────────────────────────────────────────────────────────
+  scraper:
+    id: scraper
+    name: "数据采集员"
+    description: "采集Amazon、YP、SEMrush等平台数据"
+    model: ernie-3.5-8k
+    role: |
+      你是数据采集专家，擅长使用浏览器自动化工具采集各类平台数据。
+      你需要确保采集的数据准确、完整，并正确存储到数据库。
+      遇到验证码或登录问题时，需要及时反馈。
+    
+    skills:
+      - amazon-scraping
+      - yp-scraping
+      - keyword-scraping
+    
+    tools:
+      - browser_navigate
+      - browser_click
+      - browser_extract
+      - db_write
+    
+    sub_types:
+      amazon:
+        name: "Amazon采集"
+        skills: [amazon-scraping]
+      yp:
+        name: "YP采集"  
+        skills: [yp-scraping]
+      keyword:
+        name: "关键词采集"
+        skills: [keyword-scraping]
+    
+    timeout: 120
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 分析 Agent - 数据分析和报告生成
+  # ─────────────────────────────────────────────────────────────
+  analyst:
+    id: analyst
+    name: "数据分析师"
+    description: "分析广告效果、商品数据，生成洞察报告"
+    model: ernie-4.0-8k
+    role: |
+      你是数据分析专家，擅长从数据中发现问题和机会。
+      你需要分析广告效果、商品表现，并给出可执行的优化建议。
+      你的报告应该清晰、专业、有数据支撑。
+    
+    skills:
+      - data-analysis
+      - report-generation
+    
+    tools:
+      - db_query
+      - file_write
+    
+    analysis_types:
+      - ad_performance
+      - product_performance
+      - merchant_performance
+      - keyword_analysis
+    
+    output_format: markdown
+    timeout: 60

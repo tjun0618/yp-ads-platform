@@ -1,0 +1,7 @@
+==================================================
+Google Ads Manager
+URL: http://localhost:5055
+==================================================
+[cache] yp_us_products 就绪，共 329,202 行
+ * Serving Flask app 'ads_manager'
+ * Debug mode: off

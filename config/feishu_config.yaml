@@ -1,0 +1,74 @@
+# 飞书配置文件
+# 请将此文件复制为 feishu_config_local.yaml 并填入真实凭证
+
+# 飞书应用凭证
+feishu:
+  app_id: "cli_xxxxxxxxx"  # 飞书应用 ID
+  app_secret: "xxxxxxxxxxxx"  # 飞书应用密钥
+
+  # 文档配置
+  document:
+    create_new: true  # 是否创建新文档
+    folder_token: ""  # 文件夹 Token (可选，用于指定文档位置)
+    title: "YP平台商家商品数据"  # 文档标题
+
+  # 表格配置
+  table:
+    # 表格列定义
+    columns:
+      - key: "merchant_name"
+        title: "商家名称"
+        type: "text"
+        width: 200
+      - key: "product_asin"
+        title: "商品ASIN"
+        type: "text"
+        width: 120
+      - key: "product_name"
+        title: "商品名称"
+        type: "text"
+        width: 300
+      - key: "product_price"
+        title: "价格"
+        type: "number"
+        width: 100
+      - key: "currency"
+        title: "货币"
+        type: "text"
+        width: 80
+      - key: "commission_rate"
+        title: "佣金率"
+        type: "text"
+        width: 80
+      - key: "rating"
+        title: "评分"
+        type: "number"
+        width: 80
+      - key: "review_count"
+        title: "评论数"
+        type: "number"
+        width: 100
+      - key: "product_description"
+        title: "商品描述"
+        type: "text"
+        width: 400
+      - key: "tracking_link"
+        title: "追踪链接"
+        type: "url"
+        width: 300
+      - key: "collected_at"
+        title: "采集时间"
+        type: "datetime"
+        width: 150
+
+  # API 限流配置
+  rate_limit:
+    enabled: true
+    requests_per_minute: 100
+    burst_size: 10
+
+  # 重试配置
+  retry:
+    max_attempts: 3
+    backoff_factor: 2
+    retry_on_status: [429, 500, 502, 503, 504]

@@ -1,0 +1,367 @@
+tools:
+  # ─────────────────────────────────────────────────────────────
+  # 数据库工具
+  # ─────────────────────────────────────────────────────────────
+  db_query:
+    id: db_query
+    name: "数据库查询"
+    type: database
+    description: "执行 SQL 查询，返回结果数组"
+    
+    parameters:
+      sql:
+        type: string
+        description: "SQL 查询语句 (仅支持 SELECT)"
+        required: true
+    
+    returns:
+      type: array
+      description: "查询结果数组，每行为一个字典"
+    
+    timeout: 30
+    safe: true
+    error_handling: raise
+
+
+  db_write:
+    id: db_write
+    name: "数据库写入"
+    type: database
+    description: "写入数据到数据库表"
+    
+    parameters:
+      table:
+        type: string
+        description: "目标表名"
+        required: true
+      
+      data:
+        type: object
+        description: "要写入的数据 (键值对)"
+        required: true
+      
+      mode:
+        type: string
+        description: "写入模式"
+        enum: [insert, update, upsert]
+        default: insert
+      
+      where:
+        type: string
+        description: "UPDATE 模式的 WHERE 条件"
+    
+    returns:
+      type: object
+      description: "写入结果，包含 affected_rows, insert_id"
+    
+    timeout: 30
+    safe: false
+    error_handling: raise
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 浏览器工具
+  # ─────────────────────────────────────────────────────────────
+  browser_navigate:
+    id: browser_navigate
+    name: "打开网页"
+    type: browser
+    description: "使用浏览器打开指定 URL"
+    
+    parameters:
+      url:
+        type: string
+        description: "目标 URL"
+        required: true
+      
+      wait_until:
+        type: string
+        description: "等待条件"
+        enum: [load, domcontentloaded, networkidle]
+        default: domcontentloaded
+      
+      timeout:
+        type: integer
+        description: "超时时间(秒)"
+        default: 30
+    
+    returns:
+      type: object
+      description: "页面信息，包含 url, title"
+    
+    timeout: 60
+    requires_chrome: true
+
+
+  browser_click:
+    id: browser_click
+    name: "点击元素"
+    type: browser
+    description: "点击页面上的元素"
+    
+    parameters:
+      selector:
+        type: string
+        description: "CSS 选择器"
+        required: true
+      
+      timeout:
+        type: integer
+        description: "等待元素超时(毫秒)"
+        default: 5000
+    
+    returns:
+      type: boolean
+      description: "是否点击成功"
+    
+    timeout: 10
+    requires_chrome: true
+
+
+  browser_extract:
+    id: browser_extract
+    name: "提取数据"
+    type: browser
+    description: "从页面提取数据"
+    
+    parameters:
+      selectors:
+        type: object
+        description: "字段名 -> CSS选择器映射"
+        required: true
+        example:
+          title: "h1#title"
+          price: ".price"
+      
+      multiple:
+        type: boolean
+        description: "是否提取多个元素"
+        default: false
+    
+    returns:
+      type: object
+      description: "提取的数据对象"
+    
+    timeout: 10
+    requires_chrome: true
+
+
+  browser_screenshot:
+    id: browser_screenshot
+    name: "截图"
+    type: browser
+    description: "对当前页面截图"
+    
+    parameters:
+      selector:
+        type: string
+        description: "要截图的元素选择器 (可选，默认全页)"
+      
+      path:
+        type: string
+        description: "截图保存路径"
+        required: true
+    
+    returns:
+      type: string
+      description: "截图文件路径"
+    
+    timeout: 10
+    requires_chrome: true
+
+
+  # ─────────────────────────────────────────────────────────────
+  # HTTP 工具
+  # ─────────────────────────────────────────────────────────────
+  http_request:
+    id: http_request
+    name: "HTTP 请求"
+    type: http
+    description: "发送 HTTP 请求"
+    
+    parameters:
+      method:
+        type: string
+        description: "请求方法"
+        enum: [GET, POST, PUT, DELETE, PATCH]
+        default: GET
+      
+      url:
+        type: string
+        description: "目标 URL"
+        required: true
+      
+      headers:
+        type: object
+        description: "请求头"
+        default: {}
+      
+      body:
+        type: object
+        description: "请求体 (JSON)"
+      
+      timeout:
+        type: integer
+        description: "超时时间(秒)"
+        default: 30
+    
+    returns:
+      type: object
+      description: "响应对象，包含 status, headers, body"
+    
+    timeout: 60
+    error_handling: raise
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 文件工具
+  # ─────────────────────────────────────────────────────────────
+  file_read:
+    id: file_read
+    name: "读取文件"
+    type: file
+    description: "读取文件内容"
+    
+    parameters:
+      path:
+        type: string
+        description: "文件路径"
+        required: true
+      
+      encoding:
+        type: string
+        description: "文件编码"
+        default: utf-8
+    
+    returns:
+      type: string
+      description: "文件内容"
+    
+    timeout: 10
+    safe: true
+
+
+  file_write:
+    id: file_write
+    name: "写入文件"
+    type: file
+    description: "写入内容到文件"
+    
+    parameters:
+      path:
+        type: string
+        description: "文件路径"
+        required: true
+      
+      content:
+        type: string
+        description: "文件内容"
+        required: true
+      
+      mode:
+        type: string
+        description: "写入模式"
+        enum: [write, append]
+        default: write
+      
+      encoding:
+        type: string
+        description: "文件编码"
+        default: utf-8
+    
+    returns:
+      type: boolean
+      description: "是否成功"
+    
+    timeout: 10
+    safe: false
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 通知工具
+  # ─────────────────────────────────────────────────────────────
+  notify:
+    id: notify
+    name: "发送通知"
+    type: notification
+    description: "发送通知消息到指定渠道"
+    
+    parameters:
+      channel:
+        type: string
+        description: "通知渠道"
+        enum: [feishu, webhook, email]
+        required: true
+      
+      message:
+        type: string
+        description: "消息内容"
+        required: true
+      
+      title:
+        type: string
+        description: "消息标题"
+      
+      level:
+        type: string
+        description: "消息级别"
+        enum: [info, warning, error]
+        default: info
+    
+    returns:
+      type: boolean
+      description: "是否发送成功"
+    
+    timeout: 10
+    async: true
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 缓存工具
+  # ─────────────────────────────────────────────────────────────
+  cache_get:
+    id: cache_get
+    name: "获取缓存"
+    type: cache
+    description: "从缓存获取数据"
+    
+    parameters:
+      key:
+        type: string
+        description: "缓存键"
+        required: true
+    
+    returns:
+      type: any
+      description: "缓存值，不存在返回 null"
+    
+    timeout: 5
+
+
+  cache_set:
+    id: cache_set
+    name: "设置缓存"
+    type: cache
+    description: "设置缓存数据"
+    
+    parameters:
+      key:
+        type: string
+        description: "缓存键"
+        required: true
+      
+      value:
+        type: any
+        description: "缓存值"
+        required: true
+      
+      ttl:
+        type: integer
+        description: "过期时间(秒)"
+        default: 3600
+    
+    returns:
+      type: boolean
+      description: "是否成功"
+    
+    timeout: 5

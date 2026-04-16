@@ -1,0 +1,54 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5055
+ * Running on http://192.168.3.199:5055
+Press CTRL+C to quit
+127.0.0.1 - - [27/Mar/2026 07:22:54] "GET /plans/B0F3C7NSQT HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:23:28] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:23:38] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:23:47] "GET /plans/B0F3C7NSQT HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:23:50] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:23:54] "GET /plans/B0F3C7NSQT HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:02] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:07] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:20] "GET /plans/B0F3C7NSQT HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:30] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:33] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:35] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:51] "GET /plans/B09G1Z83GM HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:56] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:24:57] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:29:07] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:29:07] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:03] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:29] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:31] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:33] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:34] "GET /merchants HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:35] "GET /api/progress HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:35] "GET /api/merchants?tab=approved&page=1&size=50 HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:35] "GET /amazon_scrape HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:35] "GET /api/progress HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:35] "GET /yp_collect HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:36] "GET /api/yp_collect_status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:37] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:57] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:35:57] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 07:35:59] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:17] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:19] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:20] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:21] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:22] "GET /merchants HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:22] "GET /api/progress HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:22] "GET /api/merchants?tab=approved&page=1&size=50 HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:22] "GET /amazon_scrape HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:22] "GET /api/progress HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:24] "GET /merchants HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:24] "GET /api/merchants?tab=approved&page=1&size=50 HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:24] "GET /api/progress HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:25] "GET /plans HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:26] "GET /campaigns HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:27] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:29] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 07:37:42] "GET /plans HTTP/1.1" 200 -

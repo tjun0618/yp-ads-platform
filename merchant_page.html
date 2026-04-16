@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+<meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>商户商品 · YP Affiliate 管理台</title>
+
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+.topbar { background: #1a1a2e; border-bottom: 1px solid #23262f; padding: 0 28px; display: flex; align-items: center; gap: 12px; height: 56px; position: sticky; top: 0; z-index: 200; }
+.page { max-width: 1440px; margin: 0 auto; padding: 28px 20px; }
+input, select, button { font-family: inherit; }
+.search-box { background: #1a1d24; border: 1px solid #2a2d36; border-radius: 8px; padding: 8px 14px; color: #e0e0e0; font-size: .88rem; outline: none; }
+.search-box:focus { border-color: #2196f3; }
+.filter-select { background: #1a1d24; border: 1px solid #2a2d36; border-radius: 8px; padding: 8px 12px; color: #e0e0e0; font-size: .88rem; outline: none; cursor: pointer; }
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+.tbl-wrap { background: #1a1d24; border: 1px solid #2a2d36; border-radius: 10px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+thead th { background: #15181f; color: #888; font-weight: 600; padding: 12px 14px; text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+tbody tr { border-top: 1px solid #23262f; }
+tbody tr:hover { background: #1e2129; }
+td { padding: 10px 14px; vertical-align: middle; }
+.td-name { font-weight: 500; color: #fff; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-id { color: #888; font-family: monospace; font-size: .8rem; }
+.td-num { text-align: right; font-family: monospace; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: .75rem; font-weight: 600; }
+.pill-green  { background: #1a3d1a; color: #66bb6a; }
+.pill-red    { background: #3d1a1a; color: #ef5350; }
+.pill-gray   { background: #23262f; color: #888; }
+.pill-blue   { background: #0a2040; color: #64b5f6; }
+.pill-orange { background: #3d2a0a; color: #ffa726; }
+.pager { display: flex; align-items: center; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.pager-btn { background: #1a1d24; border: 1px solid #2a2d36; border-radius: 6px; padding: 6px 14px; color: #e0e0e0; font-size: .84rem; cursor: pointer; transition: background .15s; }
+.pager-btn:hover:not(:disabled) { background: #2196f3; color: #fff; border-color: #2196f3; }
+.pager-btn.cur { background: #2196f3; color: #fff; border-color: #2196f3; }
+.pager-btn:disabled { opacity: .4; cursor: not-allowed; }
+.pager-info { font-size: .8rem; color: #888; margin-left: auto; }
+.loading { text-align: center; padding: 40px; color: #888; font-size: .9rem; }
+.empty   { text-align: center; padding: 40px; color: #555; font-size: .9rem; }
+.badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: .78rem; font-weight: 600; text-transform: uppercase; }
+.badge-running  { background: #1a4a1f; color: #4caf50; border: 1px solid #4caf50; }
+.badge-stopped  { background: #4a1a1a; color: #f44336; border: 1px solid #f44336; }
+.badge-finished { background: #1a3a4a; color: #2196f3; border: 1px solid #2196f3; }
+.badge-idle     { background: #2a2d36; color: #888;    border: 1px solid #444; }
+.link-btn { display: inline-block; padding: 4px 12px; border-radius: 6px; font-size: .78rem; font-weight: 600; text-decoration: none; background: #1a3a4a; color: #64b5f6; border: 1px solid #2a5a6a; transition: background .15s; cursor: pointer; }
+.link-btn:hover { background: #2196f3; color: #fff; border-color: #2196f3; }
+.btn-primary { background: #1565c0; color: #fff; padding: 4px 12px; border: none; border-radius: 6px; font-size: .78rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+.btn-primary:hover { background: #1976d2; }
+.btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+.btn-warning { background: #e65100; color: #fff; padding: 4px 12px; border: none; border-radius: 6px; font-size: .78rem; font-weight: 600; cursor: pointer; }
+.btn-warning:hover { background: #ef6c00; }
+</style>
+
+</head>
+<body>
+
+<div class="topbar" style="background:#1a1a2e;border-bottom:1px solid #23262f;padding:0 28px;display:flex;align-items:center;gap:20px;height:56px;position:sticky;top:0;z-index:200;">
+  <span style="font-size:1.1rem;font-weight:700;color:#fff;white-space:nowrap;">YP Affiliate 管理台</span>
+  <nav style="display:flex;gap:4px;">
+    <a href="/yp_sync" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">🌐 全量同步</a>
+    <a href="/yp_collect" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">⬇ YP采集</a>
+    <a href="/amazon_scrape" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">🔄 Amazon采集</a>
+    <a href="/merchants" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">🏬 商户管理</a>
+    <a href="/" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">📦 商品列表</a>
+    <a href="/plans" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">📋 广告方案</a>
+    <a href="/qs_dashboard" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">⭐ 质量评分</a>
+    <a href="/competitor_ads" style="color:#adb5bd;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">🔍 竞品参考</a>
+    <a href="/optimize" style="color:#ffa726;text-decoration:none;font-size:.87rem;padding:6px 12px;border-radius:6px;">📈 投放优化</a>
+  </nav>
+</div>
+
+<div class="page">
+  <a style="display:inline-flex;align-items:center;gap:6px;color:#888;font-size:.88rem;text-decoration:none;padding:6px 14px;border-radius:7px;background:#1a1d24;border:1px solid #2a2d36;margin-bottom:20px;" href="/merchants">← 返回商户管理</a>
+  <div id="pageTitle" style="font-size:1.3rem;font-weight:700;color:#fff;margin-bottom:4px;">商户商品</div>
+  <div id="pageSub" style="font-size:.85rem;color:#888;margin-bottom:24px;">加载中...</div>
+  <div class="toolbar">
+    <input type="text" class="search-box" id="searchInput" placeholder="搜索商品名称 / ASIN..." oninput="onSearch()" style="min-width:240px;">
+    <span style="font-size:.8rem;color:#888;" id="totalCount">-</span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>#</th><th>图片</th><th>ASIN</th><th>商品名称</th><th>YP价格</th><th>佣金率</th><th>预计佣金</th><th>评分</th><th>评论数</th><th>Amazon详情</th><th>操作</th></tr></thead>
+      <tbody id="tblBody"><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="pager" id="pager"></div>
+</div>
+<script>
+
+function renderPager(pager_id, curPage, curPages, curTotal, pageSize, onGoPage) {
+  const pager = document.getElementById(pager_id);
+  if (curPages <= 1) { pager.innerHTML = ''; return; }
+  let html = '';
+  html += '<button class="pager-btn" '+(curPage<=1?'disabled':'')+' onclick="'+onGoPage+'('+(curPage-1)+')">&#8249; 上一页</button>';
+  const start = Math.max(1, curPage-3), end = Math.min(curPages, curPage+3);
+  if (start>1) html += '<button class="pager-btn" onclick="'+onGoPage+'(1)">1</button><span style="color:#555">…</span>';
+  for (let p=start;p<=end;p++) html += '<button class="pager-btn '+(p===curPage?'cur':'')+'" onclick="'+onGoPage+'('+p+')">'+p+'</button>';
+  if (end<curPages) html += '<span style="color:#555">…</span><button class="pager-btn" onclick="'+onGoPage+'('+curPages+')">'+curPages+'</button>';
+  html += '<button class="pager-btn" '+(curPage>=curPages?'disabled':'')+' onclick="'+onGoPage+'('+(curPage+1)+')">下一页 &#8250;</button>';
+  html += '<span class="pager-info">第 '+curPage+' / '+curPages+' 页，共 '+curTotal.toLocaleString()+' 条</span>';
+  pager.innerHTML = html;
+}
+
+const mid = new URLSearchParams(location.search).get('merchant_id') || '';
+let curPage=1, curSearch='', curTotal=0, curPages=1;
+const PAGE_SIZE=50;
+function starsHtml(r){const n=parseFloat(r)||0;const full=Math.floor(n),half=n-full>=.5?1:0;let s='';for(let i=0;i<full;i++)s+='★';if(half)s+='½';return '<span style="color:#ffa726">'+s+'</span> <span style="color:#888;font-size:.8rem">'+( n||'')+'</span>';}
+function loadMerchantInfo(data){const m=data.merchant||{};document.getElementById('pageTitle').textContent=m.merchant_name||'商户商品';document.getElementById('pageSub').textContent='商户ID: '+(m.merchant_id||mid)+'  ·  佣金: $'+parseFloat(m.avg_payout||0).toFixed(2)+'/次  ·  Cookie: '+(m.cookie_days||'-')+'天  ·  共 '+data.total.toLocaleString()+' 件商品';}
+function htmlEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function renderBody(items){
+  const body=document.getElementById('tblBody');const offset=(curPage-1)*PAGE_SIZE;
+  if(!items||!items.length){body.innerHTML='<tr><td colspan="11" class="empty">暂无商品</td></tr>';return;}
+  body.innerHTML=items.map((p,i)=>{
+    const img=p.image_url?'<img src="'+htmlEsc(p.image_url)+'" style="width:48px;height:48px;object-fit:contain;background:#23262f;border-radius:4px;" onerror="this.hidden=1">'  :'<span style="color:#555;font-size:.75rem">无图</span>';
+    const amzBadge=p.has_amazon?'<span class="pill pill-green">已采集</span>':'<span class="pill pill-gray">未采集</span>';
+    const nameEsc=htmlEsc(p.product_name);
+    const nameShort=(p.product_name||'').length>60?htmlEsc(p.product_name.slice(0,60))+'…':nameEsc||'-';
+    const earnHtml=p.earn?'<span style="color:#69f0ae;font-weight:600">'+p.earn+'</span>':'<span style="color:#555">-</span>';
+    let adBtn='';
+    if(p.has_plan){
+      adBtn='<button style="background:#2e7d32;color:#fff;padding:4px 12px;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;" data-asin="'+p.asin+'" onclick="downloadPlan(this.dataset.asin)">下载方案</button>';
+    }else if(p.has_amazon){
+      adBtn='<button style="background:#1565c0;color:#fff;padding:4px 12px;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;" data-asin="'+p.asin+'" onclick="generateAd(this)">制作广告</button>';
+    }else{
+      adBtn='<button style="background:#e65100;color:#fff;padding:4px 12px;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;" data-asin="'+p.asin+'" onclick="generateAd(this)" title="建议先采集Amazon数据">制作广告</button>';
+    }
+    return '<tr><td class="td-id">'+(offset+i+1)+'</td><td>'+img+'</td><td class="td-id"><a href="https://www.amazon.com/dp/'+p.asin+'" target="_blank" style="color:#64b5f6">'+p.asin+'</a></td><td class="td-name" title="'+nameEsc+'">'+nameShort+'</td><td class="td-num">'+(p.yp_price?'$'+parseFloat(p.yp_price).toFixed(2):'-')+'</td><td class="td-num">'+(p.commission||'-')+'</td><td class="td-num">'+earnHtml+'</td><td>'+starsHtml(p.rating)+'</td><td class="td-num">'+(p.review_count||'-')+'</td><td>'+amzBadge+'</td><td style="white-space:nowrap">'+adBtn+'</td></tr>';
+  }).join('');
+}
+function loadTable(){
+  document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="loading">加载中...</td></tr>';
+  let url='/api/merchant_products?merchant_id='+encodeURIComponent(mid)+'&page='+curPage+'&size='+PAGE_SIZE;
+  if(curSearch) url+='&q='+encodeURIComponent(curSearch);
+  fetch(url).then(r=>r.json()).then(data=>{
+    try{
+      if(data.error){document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">错误: '+data.error+'</td></tr>';return;}
+      loadMerchantInfo(data);curTotal=data.total;curPages=data.pages;
+      document.getElementById('totalCount').textContent='共 '+data.total.toLocaleString()+' 件商品';
+      renderBody(data.items);renderPager('pager',curPage,curPages,curTotal,PAGE_SIZE,'goPage');
+    }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">渲染错误: '+e.message+'</td></tr>';}
+  }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">加载失败: '+e+'</td></tr>';});
+}
+let searchTimer;
+function onSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>{curSearch=document.getElementById('searchInput').value.trim();curPage=1;loadTable();},300);}
+function goPage(p){curPage=p;loadTable();window.scrollTo(0,0);}
+function openDetail(asin){alert('请在商品列表页查看详情（/products）或访问 https://www.amazon.com/dp/'+asin);}
+async function generateAd(btn){
+  const asin=btn.dataset.asin;
+  btn.disabled=true;
+  btn.textContent='生成中...';
+  try{
+    let res=await fetch('/api/generate/'+asin,{method:'POST'});
+    let data=await res.json();
+    if(data.success){
+      alert('广告方案生成成功！共 '+data.campaigns+' 个广告系列');
+      location.reload();
+    }else if(data.message && data.message.includes('already exists')){
+      // 方案已存在，尝试强制重新生成
+      btn.textContent='重新生成中...';
+      res=await fetch('/api/generate/'+asin+'?force=1',{method:'POST'});
+      data=await res.json();
+      if(data.success){
+        alert('广告方案重新生成成功！共 '+data.campaigns+' 个广告系列');
+        location.reload();
+      }else{
+        alert(data.message||'重新生成失败');
+        btn.disabled=false;
+        btn.textContent='制作广告';
+      }
+    }else{
+      alert(data.message||'生成失败');
+      btn.disabled=false;
+      btn.textContent='制作广告';
+    }
+  }catch(e){
+    alert('请求失败: '+e);
+    btn.disabled=false;
+    btn.textContent='制作广告';
+  }
+}
+function downloadPlan(asin){
+  window.open('/api/download_plan/'+asin);
+}
+loadTable();
+</script>
+</body>
+</html>

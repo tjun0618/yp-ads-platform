@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品广告生成流程 – YP Affiliate 管理台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            min-height: 100vh;
+            color: #fff;
+        }
+        /* 导航栏样式 */
+        .topbar { background: #1a1a2e; border-bottom: 1px solid #23262f; padding: 0 28px; display: flex; align-items: center; gap: 12px; height: 56px; position: sticky; top: 0; z-index: 200; }
+        .topbar-title { font-size: 1.1rem; font-weight: 700; color: #fff; white-space: nowrap; }
+        .topbar-nav { display: flex; gap: 4px; }
+        .topbar-nav a { color: #adb5bd; text-decoration: none; font-size: .87rem; padding: 6px 12px; border-radius: 6px; transition: all 0.2s; }
+        .topbar-nav a:hover { background: #2a2d36; color: #fff; }
+        .topbar-nav a.active { background: #3d5a80; color: #fff; }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        h1 { text-align: center; margin-bottom: 30px; font-size: 28px; color: #e879f9; }
+        
+        .input-section {
+            background: #1a1d24;
+            border: 1px solid #2a2d36;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .input-section h2 { margin-bottom: 20px; color: #e879f9; }
+        .input-group { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+        .input-group input {
+            padding: 12px 20px;
+            border-radius: 8px;
+            border: 2px solid #444;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 16px;
+            width: 200px;
+        }
+        .input-group input:focus { outline: none; border-color: #e879f9; }
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .btn-primary { background: #e879f9; color: #1a1a2e; }
+        .btn-primary:hover { background: #d566e8; }
+        .btn-success { background: #27ae60; color: #fff; }
+        .btn-danger { background: #e74c3c; color: #fff; }
+        .btn-secondary { background: #2a2d36; color: #adb5bd; border: 1px solid #444; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            margin-top: 20px;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #e879f9, #27ae60);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        
+        .workflow-container { display: flex; flex-direction: column; gap: 15px; align-items: center; }
+        
+        .stage { width: 100%; max-width: 1200px; }
+        .stage-title {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 10px;
+            padding-left: 10px;
+            border-left: 3px solid #e879f9;
+        }
+        .nodes-row { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+        
+        .node {
+            background: #1a1d24;
+            border: 1px solid #2a2d36;
+            border-radius: 12px;
+            padding: 20px;
+            min-width: 180px;
+            max-width: 220px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+        .node:hover:not(.locked) {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            border-color: #e879f9;
+        }
+        .node.locked { opacity: 0.5; cursor: not-allowed; }
+        .node.active { border-color: #e879f9; box-shadow: 0 0 20px rgba(232, 121, 249, 0.3); }
+        .node.completed { border-color: #27ae60; background: linear-gradient(135deg, #1a1d24 0%, #1a3a2e 100%); }
+        .node.error { border-color: #e74c3c; }
+        
+        .node-icon { font-size: 28px; margin-bottom: 8px; }
+        .node-title { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+        .node-desc { font-size: 11px; color: #888; margin-bottom: 8px; }
+        .node-status {
+            font-size: 10px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .status-pending { background: #444; color: #aaa; }
+        .status-ready { background: #1a4a2e; color: #27ae60; }
+        .status-running { background: #1a3a5e; color: #4dabf7; }
+        .status-completed { background: #1a4a2e; color: #27ae60; }
+        .status-error { background: #3a1a1a; color: #e74c3c; }
+        .node-data { margin-top: 8px; font-size: 10px; color: #aaa; }
+        
+        .arrow { font-size: 24px; color: #e879f9; margin: 5px 0; text-align: center; }
+        
+        .log-section {
+            background: #1a1d24;
+            border: 1px solid #2a2d36;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+        .log-section h3 { margin-bottom: 15px; color: #e879f9; font-size: 14px; }
+        .log-content { font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.6; color: #aaa; }
+        .log-success { color: #27ae60; }
+        .log-error { color: #e74c3c; }
+        .log-info { color: #e879f9; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+        .modal-content {
+            background: #1a1d24;
+            border: 1px solid #2a2d36;
+            border-radius: 12px;
+            padding: 25px;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .modal-header h3 { color: #e879f9; }
+        .modal-close { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; }
+        .modal-body { color: #aaa; font-size: 13px; line-height: 1.8; }
+        .modal-footer { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+        
+        .data-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        .data-table th, .data-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid #2a2d36; }
+        .data-table th { color: #e879f9; font-weight: 600; }
+        
+        .quick-actions {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .quick-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: transform 0.3s ease;
+        }
+        .quick-btn:hover { transform: scale(1.1); }
+        
+        /* 编辑功能样式 */
+        .edit-section { margin-top: 15px; padding-top: 15px; border-top: 1px solid #2a2d36; }
+        .edit-input {
+            width: 100%;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #444;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 13px;
+            margin-bottom: 10px;
+        }
+        .edit-input:focus { outline: none; border-color: #e879f9; }
+        .edit-btn-row { display: flex; gap: 8px; }
+        .btn-small { padding: 6px 14px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <div class="topbar">
+        <span class="topbar-title">YP Affiliate 管理台</span>
+        <nav class="topbar-nav">
+            <a href="/yp_sync">🌐 全量同步</a>
+            <a href="/yp_collect">⬇ YP采集</a>
+            <a href="/amazon_scrape">🔄 Amazon采集</a>
+            <a href="/merchants">🏬 商户管理</a>
+            <a href="/">📦 商品列表</a>
+            <a href="/plans">📋 广告方案</a>
+            <a href="/workflow" class="active" style="color:#e879f9">🎯 广告流程</a>
+            <a href="/qs_dashboard">⭐ 质量评分</a>
+            <a href="/competitor_ads">🔍 竞品参考</a>
+            <a href="/optimize" style="color:#ffa726">📈 投放优化</a>
+            <a href="/agent_chat" style="color:#4c6ef5">🤖 Agent对话</a>
+        </nav>
+    </div>
+    
+    <div class="container">
+        <h1>🎯 商品广告生成流程</h1>
+        
+        <div class="input-section">
+            <h2>开始流程</h2>
+            <div class="input-group">
+                <input type="text" id="merchantId" placeholder="输入商户ID (如: 362447)">
+                <button class="btn btn-primary" onclick="startWorkflow()">开始流程</button>
+                <button class="btn btn-success" onclick="runAllSteps()">一键执行全部</button>
+                <button class="btn btn-danger" onclick="resetWorkflow()">重置</button>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+        
+        <div class="workflow-container" id="workflowContainer">
+            <!-- Stage 1: 商户信息 -->
+            <div class="stage">
+                <div class="stage-title">Stage 1: 商户基础信息</div>
+                <div class="nodes-row">
+                    <div class="node locked" id="node-merchant" onclick="executeNode('merchant')">
+                        <div class="node-icon">🏢</div>
+                        <div class="node-title">获取商户信息</div>
+                        <div class="node-desc">根据商户ID获取基本信息</div>
+                        <span class="node-status status-pending" id="status-merchant">待执行</span>
+                        <div class="node-data" id="data-merchant"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Stage 2: 品牌数据 -->
+            <div class="stage">
+                <div class="stage-title">Stage 2: 品牌数据采集</div>
+                <div class="nodes-row">
+                    <div class="node locked" id="node-website" onclick="executeNode('website')">
+                        <div class="node-icon">🌐</div>
+                        <div class="node-title">获取官网</div>
+                        <div class="node-desc">提取商户官网域名</div>
+                        <span class="node-status status-pending" id="status-website">待执行</span>
+                        <div class="node-data" id="data-website"></div>
+                        <div class="edit-section" id="edit-website" style="display:none;" onclick="event.stopPropagation()">
+                            <input type="text" class="edit-input" id="input-website" placeholder="输入官网地址">
+                            <div class="edit-btn-row">
+                                <button class="btn btn-primary btn-small" onclick="saveWebsite()">保存</button>
+                                <button class="btn btn-secondary btn-small" onclick="cancelEditWebsite()">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="node locked" id="node-keywords" onclick="executeNode('keywords')">
+                        <div class="node-icon">🔑</div>
+                        <div class="node-title">谷歌关键词</div>
+                        <div class="node-desc">采集Google Suggest关键词</div>
+                        <span class="node-status status-pending" id="status-keywords">待执行</span>
+                        <div class="node-data" id="data-keywords"></div>
+                    </div>
+                    <!-- 谷歌搜索结果节点 [暂时注释 - 需要代理]
+                    <div class="node locked" id="node-google_serp" onclick="executeNode('google_serp')">
+                        <div class="node-icon">🔍</div>
+                        <div class="node-title">谷歌搜索结果</div>
+                        <div class="node-desc">采集品牌相关标题/描述</div>
+                        <span class="node-status status-pending" id="status-google_serp">待执行</span>
+                        <div class="node-data" id="data-google_serp"></div>
+                    </div>
+                    -->
+                    <div class="node locked" id="node-semrush" onclick="executeNode('semrush')">
+                        <div class="node-icon">📊</div>
+                        <div class="node-title">SEMrush数据</div>
+                        <div class="node-desc">采集外贸侠SEO数据</div>
+                        <span class="node-status status-pending" id="status-semrush">待执行</span>
+                        <div class="node-data" id="data-semrush"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Stage 3: 商品数据 -->
+            <div class="stage">
+                <div class="stage-title">Stage 3: 商品数据采集</div>
+                <div class="nodes-row">
+                    <div class="node locked" id="node-products" onclick="executeNode('products')">
+                        <div class="node-icon">📦</div>
+                        <div class="node-title">获取商品列表</div>
+                        <div class="node-desc">获取商户所有商品</div>
+                        <span class="node-status status-pending" id="status-products">待执行</span>
+                        <div class="node-data" id="data-products"></div>
+                    </div>
+                    <div class="node locked" id="node-amazon" onclick="executeNode('amazon')">
+                        <div class="node-icon">🛒</div>
+                        <div class="node-title">亚马逊商品信息</div>
+                        <div class="node-desc">采集商品Amazon详情</div>
+                        <span class="node-status status-pending" id="status-amazon">待执行</span>
+                        <div class="node-data" id="data-amazon"></div>
+                        <div class="edit-section" id="edit-amazon" style="display:none;" onclick="event.stopPropagation()">
+                            <label style="font-size:12px;color:#888;margin-bottom:5px;display:block;">选择商品ASIN:</label>
+                            <select class="edit-input" id="select-asin" style="margin-bottom:8px;">
+                                <option value="">-- 请选择商品 --</option>
+                            </select>
+                            <div class="edit-btn-row">
+                                <button class="btn btn-primary btn-small" onclick="collectAmazonByAsin()">采集</button>
+                                <button class="btn btn-secondary btn-small" onclick="cancelEditAmazon()">取消</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="arrow">↓</div>
+            
+            <!-- Stage 4: 广告生成 -->
+            <div class="stage">
+                <div class="stage-title">Stage 4: 广告生成与评估</div>
+                <div class="nodes-row">
+                    <div class="node locked" id="node-report" onclick="executeNode('report')">
+                        <div class="node-icon">📄</div>
+                        <div class="node-title">生成商品报告</div>
+                        <div class="node-desc">整合所有数据生成报告</div>
+                        <span class="node-status status-pending" id="status-report">待执行</span>
+                        <div class="node-data" id="data-report"></div>
+                    </div>
+                    <div class="node locked" id="node-ads" onclick="executeNode('ads')">
+                        <div class="node-icon">✏️</div>
+                        <div class="node-title">生成广告方案</div>
+                        <div class="node-desc">基于报告生成广告</div>
+                        <span class="node-status status-pending" id="status-ads">待执行</span>
+                        <div class="node-data" id="data-ads"></div>
+                    </div>
+                    <div class="node locked" id="node-evaluate" onclick="executeNode('evaluate')">
+                        <div class="node-icon">⭐</div>
+                        <div class="node-title">评估广告质量</div>
+                        <div class="node-desc">AI评估广告质量分</div>
+                        <span class="node-status status-pending" id="status-evaluate">待执行</span>
+                        <div class="node-data" id="data-evaluate"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stage 5: 广告投放 [暂时注释 - 需要配置 Google Ads API]
+            <div class="arrow">↓</div>
+            <div class="stage">
+                <div class="stage-title">Stage 5: 广告投放</div>
+                <div class="nodes-row">
+                    <div class="node locked" id="node-publish_ads" onclick="executeNode('publish_ads')">
+                        <div class="node-icon">🚀</div>
+                        <div class="node-title">投放广告</div>
+                        <div class="node-desc">发布到Google Ads</div>
+                        <span class="node-status status-pending" id="status-publish_ads">待执行</span>
+                        <div class="node-data" id="data-publish_ads"></div>
+                    </div>
+                </div>
+            </div>
+            -->
+        </div>
+        
+        <div class="log-section">
+            <h3>📋 执行日志</h3>
+            <div class="log-content" id="logContent">
+                <div class="log-info">等待开始流程...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 模态框 -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">详情</h3>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 快捷操作 -->
+    <div class="quick-actions">
+        <button class="quick-btn btn-primary" onclick="showCurrentStatus()" title="查看当前状态">📊</button>
+        <button class="quick-btn btn-success" onclick="downloadReport()" title="下载报告">📥</button>
+    </div>
+
+    <script>
+        // 流程状态
+        const workflowState = {
+            merchantId: null,
+            merchant: null,
+            website: null,
+            keywords: null,  // 改为 null，避免空数组被误判为 truthy
+            google_serp: null,
+            semrush: null,
+            products: null,  // 改为 null
+            amazon: null,    // 改为 null
+            selectedAsin: null,  // 用户选择的ASIN
+            report: null,
+            ads: null,
+            evaluation: null,
+            // publish_ads: null,  // 暂时注释
+            currentStep: 0
+        };
+        
+        // 节点依赖关系
+        const nodeDependencies = {
+            merchant: [],
+            website: ['merchant'],
+            keywords: ['merchant'],
+            // google_serp: ['merchant'],  // 暂时注释
+            semrush: ['merchant'],
+            products: ['merchant'],
+            amazon: ['products'],
+            report: ['products', 'amazon'],  // 只依赖商品和亚马逊信息
+            ads: ['report'],
+            evaluate: ['ads']
+            // publish_ads: ['evaluate']  // 暂时注释
+        };
+        
+        // 节点执行顺序
+        const nodeOrder = ['merchant', 'website', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate'];
+        
+        // 日志
+        function log(message, type = 'info') {
+            const logContent = document.getElementById('logContent');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'log-success' : type === 'error' ? 'log-error' : 'log-info';
+            logContent.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logContent.scrollTop = logContent.scrollHeight;
+        }
+        
+        // 更新进度条
+        function updateProgress() {
+            const completed = nodeOrder.filter(n => workflowState[n]).length;
+            const progress = (completed / nodeOrder.length) * 100;
+            document.getElementById('progressFill').style.width = progress + '%';
+        }
+        
+        // 更新节点状态
+        function updateNodeStatus(nodeId, status, data = null) {
+            const node = document.getElementById('node-' + nodeId);
+            const statusEl = document.getElementById('status-' + nodeId);
+            const dataEl = document.getElementById('data-' + nodeId);
+            
+            node.classList.remove('locked', 'active', 'completed', 'error');
+            statusEl.classList.remove('status-pending', 'status-ready', 'status-running', 'status-completed', 'status-error');
+            
+            if (status === 'running') {
+                node.classList.add('active');
+                statusEl.classList.add('status-running');
+                statusEl.textContent = '执行中...';
+            } else if (status === 'completed') {
+                node.classList.add('completed');
+                statusEl.classList.add('status-completed');
+                statusEl.textContent = '已完成 ✓';
+                if (data) {
+                    dataEl.innerHTML = data;
+                }
+            } else if (status === 'error') {
+                node.classList.add('error');
+                statusEl.classList.add('status-error');
+                statusEl.textContent = '失败 ✗';
+            } else if (status === 'ready') {
+                statusEl.classList.add('status-ready');
+                statusEl.textContent = '可执行';
+            }
+            
+            updateProgress();
+            checkDependencies();
+        }
+        
+        // 检查依赖
+        function checkDependencies() {
+            for (const nodeId of nodeOrder) {
+                if (workflowState[nodeId]) continue;
+                
+                const deps = nodeDependencies[nodeId];
+                const allDepsMet = deps.every(dep => workflowState[dep]);
+                
+                const node = document.getElementById('node-' + nodeId);
+                const statusEl = document.getElementById('status-' + nodeId);
+                
+                if (allDepsMet && !node.classList.contains('completed')) {
+                    node.classList.remove('locked');
+                    statusEl.classList.remove('status-pending');
+                    statusEl.classList.add('status-ready');
+                    statusEl.textContent = '可执行';
+                }
+            }
+        }
+        
+        // 开始流程
+        async function startWorkflow() {
+            const merchantId = document.getElementById('merchantId').value.trim();
+            if (!merchantId) {
+                log('请输入商户ID', 'error');
+                return;
+            }
+            
+            workflowState.merchantId = merchantId;
+            log(`开始流程，商户ID: ${merchantId}`, 'info');
+            
+            // 解锁第一个节点
+            const firstNode = document.getElementById('node-merchant');
+            firstNode.classList.remove('locked');
+            updateNodeStatus('merchant', 'ready');
+            
+            // 检查已有数据
+            try {
+                log('正在检查已有数据...', 'info');
+                const response = await fetch(`/api/workflow/status/${merchantId}`);
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const data = result.data;
+                    
+                    // 商户信息
+                    if (data.merchant) {
+                        workflowState.merchant = data.merchant.data;
+                        updateNodeStatus('merchant', 'completed', data.merchant.summary);
+                        log('商户信息: 已存在', 'success');
+                    }
+                    
+                    // 官网
+                    if (data.website && data.website.data.website) {
+                        workflowState.website = data.website.data;
+                        updateNodeStatus('website', 'completed', data.website.summary);
+                        log('官网: 已存在', 'success');
+                    }
+                    
+                    // 关键词
+                    if (data.keywords) {
+                        workflowState.keywords = data.keywords.data;
+                        updateNodeStatus('keywords', 'completed', data.keywords.summary);
+                        log(`关键词: 已有 ${data.keywords.data.count} 个`, 'success');
+                    }
+                    
+                    // SEMrush
+                    if (data.semrush) {
+                        workflowState.semrush = data.semrush.data;
+                        updateNodeStatus('semrush', 'completed', data.semrush.summary);
+                        log('SEMrush数据: 已存在', 'success');
+                    }
+                    
+                    // 商品列表
+                    if (data.products) {
+                        workflowState.products = data.products.data;
+                        updateNodeStatus('products', 'completed', data.products.summary);
+                        log(`商品列表: 已有 ${data.products.data.count} 个商品`, 'success');
+                    }
+                    
+                    // 亚马逊信息
+                    if (data.amazon) {
+                        workflowState.amazon = data.amazon.data;
+                        updateNodeStatus('amazon', 'completed', data.amazon.summary);
+                        log(`亚马逊信息: 已采集 ${data.amazon.data.with_amazon} 个`, 'success');
+                    }
+                    
+                    // 统计已完成节点数
+                    const completedCount = Object.keys(data).filter(k => data[k]).length;
+                    if (completedCount > 0) {
+                        log(`已加载 ${completedCount} 个已完成的数据`, 'success');
+                    }
+                }
+            } catch (e) {
+                log(`检查已有数据失败: ${e.message}`, 'error');
+            }
+        }
+        
+        // 重置流程
+        function resetWorkflow() {
+            for (const key of Object.keys(workflowState)) {
+                workflowState[key] = null;
+            }
+            
+            // 重置所有节点
+            for (const nodeId of nodeOrder) {
+                const node = document.getElementById('node-' + nodeId);
+                const statusEl = document.getElementById('status-' + nodeId);
+                const dataEl = document.getElementById('data-' + nodeId);
+                
+                node.classList.remove('completed', 'active', 'error');
+                node.classList.add('locked');
+                statusEl.classList.remove('status-ready', 'status-running', 'status-completed', 'status-error');
+                statusEl.classList.add('status-pending');
+                statusEl.textContent = '待执行';
+                dataEl.innerHTML = '';
+            }
+            
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('logContent').innerHTML = '<div class="log-info">流程已重置</div>';
+        }
+        
+        // 执行节点
+        async function executeNode(nodeId) {
+            const node = document.getElementById('node-' + nodeId);
+            if (node.classList.contains('locked')) {
+                log(`节点 ${nodeId} 尚未解锁，请先完成前置步骤`, 'error');
+                return;
+            }
+            
+            // 特殊处理：亚马逊节点显示商品选择
+            if (nodeId === 'amazon') {
+                await showEditAmazon();
+                return;
+            }
+            
+            if (workflowState[nodeId]) {
+                // 特殊处理：website 节点显示编辑选项
+                if (nodeId === 'website') {
+                    showEditWebsite();
+                } else {
+                    showNodeDetail(nodeId);
+                }
+                return;
+            }
+            
+            updateNodeStatus(nodeId, 'running');
+            log(`开始执行: ${getNodeTitle(nodeId)}`, 'info');
+            
+            // 特殊处理：商户节点可能需要采集
+            if (nodeId === 'merchant') {
+                log('正在检查商户信息...', 'info');
+            }
+            
+            try {
+                const result = await callApi(nodeId);
+                if (result.success) {
+                    // 检查是否是"采集已启动"状态
+                    if (result.data && result.data.collecting) {
+                        // 采集已启动，不标记为完成，显示提示
+                        updateNodeStatus(nodeId, 'ready');
+                        log(`${getNodeTitle(nodeId)}: ${result.summary}`, 'info');
+                        log(`提示: 采集完成后，再次点击此节点刷新数据`, 'info');
+                    } else {
+                        // 真正完成
+                        workflowState[nodeId] = result.data;
+                        updateNodeStatus(nodeId, 'completed', result.summary);
+                        log(`${getNodeTitle(nodeId)} 完成`, 'success');
+                    }
+                } else {
+                    updateNodeStatus(nodeId, 'error');
+                    // 特殊处理商户不存在的情况
+                    if (nodeId === 'merchant' && result.error && result.error.includes('不存在')) {
+                        log(`商户不存在，正在尝试自动采集...`, 'info');
+                        log(`提示：如果采集超时，请先在"YP采集"页面采集商户`, 'info');
+                    }
+                    log(`${getNodeTitle(nodeId)} 失败: ${result.error}`, 'error');
+                    
+                    // 显示帮助信息
+                    if (result.hint) {
+                        log(`提示: ${result.hint}`, 'info');
+                    }
+                }
+            } catch (e) {
+                updateNodeStatus(nodeId, 'error');
+                log(`${getNodeTitle(nodeId)} 异常: ${e.message}`, 'error');
+            }
+        }
+        
+        // 获取节点标题
+        function getNodeTitle(nodeId) {
+            const titles = {
+                merchant: '获取商户信息',
+                website: '获取官网',
+                keywords: '采集谷歌关键词',
+                // google_serp: '采集谷歌搜索结果',  // 暂时注释
+                semrush: '采集SEMrush数据',
+                products: '获取商品列表',
+                amazon: '采集亚马逊信息',
+                report: '生成商品报告',
+                ads: '生成广告方案',
+                evaluate: '评估广告质量'
+                // publish_ads: '投放广告'  // 暂时注释
+            };
+            return titles[nodeId] || nodeId;
+        }
+        
+        // 调用API
+        async function callApi(nodeId, extraData = {}) {
+            const merchantId = workflowState.merchantId;
+            
+            const apiMap = {
+                merchant: `/api/workflow/merchant/${merchantId}`,
+                website: `/api/workflow/website/${merchantId}`,
+                keywords: `/api/workflow/keywords/${merchantId}`,
+                // google_serp: `/api/workflow/google_serp/${merchantId}`,  // 暂时注释
+                semrush: `/api/workflow/semrush/${merchantId}`,
+                products: `/api/workflow/products/${merchantId}`,
+                amazon: `/api/workflow/amazon/${merchantId}`,
+                report: `/api/workflow/report/${merchantId}`,
+                ads: `/api/workflow/ads/${merchantId}`,
+                evaluate: `/api/workflow/evaluate/${merchantId}`
+                // publish_ads: `/api/workflow/publish_ads/${merchantId}`  // 暂时注释
+            };
+            
+            try {
+                const options = { method: 'POST' };
+                
+                // 对于需要ASIN的API，传递selectedAsin
+                if (['report', 'ads', 'evaluate'].includes(nodeId) && workflowState.selectedAsin) {
+                    options.headers = { 'Content-Type': 'application/json' };
+                    options.body = JSON.stringify({ asin: workflowState.selectedAsin });
+                }
+                
+                // 如果有额外数据，合并
+                if (Object.keys(extraData).length > 0) {
+                    const existingBody = options.body ? JSON.parse(options.body) : {};
+                    options.headers = { 'Content-Type': 'application/json' };
+                    options.body = JSON.stringify({ ...existingBody, ...extraData });
+                }
+                
+                const response = await fetch(apiMap[nodeId], options);
+                return await response.json();
+            } catch (e) {
+                return { success: false, error: e.message };
+            }
+        }
+        
+        // 一键执行
+        async function runAllSteps() {
+            startWorkflow();
+            for (const nodeId of nodeOrder) {
+                if (!workflowState[nodeId]) {
+                    await executeNode(nodeId);
+                    if (!workflowState[nodeId]) break;
+                }
+            }
+        }
+        
+        // 显示节点详情
+        function showNodeDetail(nodeId) {
+            const data = workflowState[nodeId];
+            if (!data) return;
+            
+            document.getElementById('modalTitle').textContent = getNodeTitle(nodeId) + ' - 详情';
+            document.getElementById('modalBody').innerHTML = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+            document.getElementById('modal').classList.add('active');
+        }
+        
+        // 关闭模态框
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+        
+        // 显示当前状态
+        function showCurrentStatus() {
+            const completed = nodeOrder.filter(n => workflowState[n]).length;
+            document.getElementById('modalTitle').textContent = '当前流程状态';
+            document.getElementById('modalBody').innerHTML = `
+                <p>进度: ${completed}/${nodeOrder.length} 步骤已完成</p>
+                <table class="data-table">
+                    <tr><th>步骤</th><th>状态</th></tr>
+                    ${nodeOrder.map(n => `<tr><td>${getNodeTitle(n)}</td><td>${workflowState[n] ? '✓ 已完成' : '○ 待执行'}</td></tr>`).join('')}
+                </table>
+            `;
+            document.getElementById('modal').classList.add('active');
+        }
+        
+        // 下载报告
+        function downloadReport() {
+            if (workflowState.selectedAsin) {
+                window.open(`/api/generate_product_report/${workflowState.selectedAsin}`);
+            } else {
+                log('请先选择商品', 'error');
+            }
+        }
+        
+        // 显示编辑官网
+        function showEditWebsite() {
+            const editSection = document.getElementById('edit-website');
+            const input = document.getElementById('input-website');
+            const currentWebsite = workflowState.website ? workflowState.website.website : '';
+            
+            input.value = currentWebsite;
+            editSection.style.display = 'block';
+        }
+        
+        // 取消编辑官网
+        function cancelEditWebsite() {
+            document.getElementById('edit-website').style.display = 'none';
+        }
+        
+        // 保存官网
+        async function saveWebsite() {
+            const input = document.getElementById('input-website');
+            const newWebsite = input.value.trim();
+            
+            if (!newWebsite) {
+                log('官网地址不能为空', 'error');
+                return;
+            }
+            
+            const merchantId = workflowState.merchantId;
+            
+            try {
+                const response = await fetch(`/api/workflow/website/${merchantId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ website: newWebsite })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    workflowState.website = result.data;
+                    document.getElementById('data-website').innerHTML = result.summary;
+                    document.getElementById('edit-website').style.display = 'none';
+                    log(`官网已更新: ${newWebsite}`, 'success');
+                } else {
+                    log(`更新失败: ${result.error}`, 'error');
+                }
+            } catch (e) {
+                log(`更新异常: ${e.message}`, 'error');
+            }
+        }
+        
+        // 显示亚马逊商品选择
+        async function showEditAmazon() {
+            const merchantId = workflowState.merchantId;
+            const select = document.getElementById('select-asin');
+            const editSection = document.getElementById('edit-amazon');
+            
+            // 清空选项
+            select.innerHTML = '<option value="">-- 加载中... --</option>';
+            editSection.style.display = 'block';
+            
+            try {
+                // 获取商品列表
+                const response = await fetch(`/api/workflow/products/${merchantId}`, { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success && result.data && result.data.products) {
+                    const products = result.data.products;
+                    select.innerHTML = '<option value="">-- 请选择商品 --</option>';
+                    products.forEach(p => {
+                        const option = document.createElement('option');
+                        option.value = p.asin;
+                        option.textContent = `${p.asin} - ${p.product_name || 'N/A'}`;
+                        select.appendChild(option);
+                    });
+                    log(`已加载 ${products.length} 个商品`, 'info');
+                } else {
+                    select.innerHTML = '<option value="">-- 无商品数据 --</option>';
+                    log('请先获取商品列表', 'error');
+                }
+            } catch (e) {
+                select.innerHTML = '<option value="">-- 加载失败 --</option>';
+                log(`加载商品列表失败: ${e.message}`, 'error');
+            }
+        }
+        
+        // 取消亚马逊选择
+        function cancelEditAmazon() {
+            document.getElementById('edit-amazon').style.display = 'none';
+        }
+        
+        // 采集单个商品的亚马逊信息
+        async function collectAmazonByAsin() {
+            const select = document.getElementById('select-asin');
+            const asin = select.value;
+            
+            if (!asin) {
+                log('请选择商品', 'error');
+                return;
+            }
+            
+            // 保存用户选择的ASIN
+            workflowState.selectedAsin = asin;
+            
+            const merchantId = workflowState.merchantId;
+            
+            log(`开始采集商品 ${asin} 的亚马逊信息...`, 'info');
+            document.getElementById('edit-amazon').style.display = 'none';
+            updateNodeStatus('amazon', 'running');
+            
+            try {
+                const response = await fetch(`/api/workflow/amazon/${merchantId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ asin: asin })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data && result.data.collecting) {
+                        updateNodeStatus('amazon', 'ready');
+                        log(`采集已启动，请在新窗口完成后刷新`, 'info');
+                        log(`已选择商品: ${asin}`, 'info');
+                    } else {
+                        workflowState.amazon = result.data;
+                        updateNodeStatus('amazon', 'completed', result.summary);
+                        log(`亚马逊信息采集完成，已选择商品: ${asin}`, 'success');
+                    }
+                } else {
+                    updateNodeStatus('amazon', 'error');
+                    log(`采集失败: ${result.error}`, 'error');
+                }
+            } catch (e) {
+                updateNodeStatus('amazon', 'error');
+                log(`采集异常: ${e.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>

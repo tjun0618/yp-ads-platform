@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Output files
+output/
+*.json
+
+# Configuration (contains secrets)
+config/feishu_config_local.yaml
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Playwright
+.playwright/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Browser profile
+.browser_profile/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Windows reserved names
+nul
+
+# Temporary files
+temp/
+*.tmp
+*.bat
+_launch_*.bat
+
+# Debug files
+*_output.txt
+*_log.txt
+*.png
+*.jpg
+*.jpeg

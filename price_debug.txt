@@ -1,0 +1,75 @@
+=== ASIN: B09G1Z83GM
+=== URL: https://www.amazon.com/dp/B09G1Z83GM?language=en_US
+
+
+[#buybox] (15377 chars):
+
+                                                        <div data-csa-c-type="element" data-csa-c-slot-id="offer_display_content" data-csa-c-content-id="desktop_buybox_group_1" data-csa-c-id="7a0trd-2w3kup-pb4c1t-fyhjr6">
+                    <div id="outOfStockBuyBox_feature_div" class="celwidget" data-feature-name="outOfStockBuyBox" data-csa-c-type="widget" data-csa-c-content-id="outOfStockBuyBox" data-csa-c-slot-id="outOfStockBuyBox_feature_div" data-csa-c-asin="B09G21QCWT" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="jsgikm-4lhx8f-9osnlj-6wg4f8" data-cel-widget="outOfStockBuyBox_feature_div">
+                                                                                                                                                                                                               <div class="a-section">  <form method="post" id="addToCart" action="/gp/product/handle-buy-box/ref=dp_start-bbf_1_glance" class="a-content" autocomplete="off">
+         <!-- sp:csrf --><input type="hidden" name="anti-csrftoken-a2z" value="hKp3lpNyCaAOn2+f1oVxJX1JuodDAcnp5eWGmRdjSFIAAAAAAGnDeQliN2RlYmQ1Zi1iNjVkLTQzMzItYWIwYy00ODM0NjYxZDA2MTg=" id="desktop-atc-anti-csrf-token"><!-- sp:end-csrf -->
+            <input type="hidden" id="offerListingID" name="offerListingID" value="">
+              <input type="hidden" id="session-id" name="session-id" value="139-0023529-2970960">
+              <input type="hidden" id="ASIN" name="ASIN" value="B09G21QCWT">
+              <input type="hidden" id="isMerchantExclusive" name="isMerchantExclusive" value="0">
+              <input type="hidden" id="merchantID" name="merchantID" value="">
+              <input type="hidden" id="isAddon" name="isAddon" value="0">
+              <input type="hidden" id="nodeID" name="nodeID" value="">
+              <input type="hidden" id="sellingCustomerID" name="sellingCustomerID" value="">
+              <input type="hidden" id="qid" name="qid" value="">
+              <input type="hidden" i
+
+[#corePriceDisplay_desktop_feature_div]: NOT FOUND
+
+[#corePrice_feature_div]: NOT FOUND
+
+[#price]: NOT FOUND
+
+[#rightCol] (33925 chars):
+
+                               <div id="attachAccessoryModal_feature_div" class="celwidget" data-feature-name="attachAccessoryModal" data-csa-c-type="widget" data-csa-c-content-id="attachAccessoryModal" data-csa-c-slot-id="attachAccessoryModal_feature_div" data-csa-c-asin="" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="93juk2-yg875u-gixd1s-7wex58" data-cel-widget="attachAccessoryModal_feature_div">
+                                                   <input type="hidden" id="attach-gxa-to-flow-migration-enabled">
+
+                               </div>
+                                <div id="attachSideSheet_feature_div" class="celwidget" data-feature-name="attachSideSheet" data-csa-c-type="widget" data-csa-c-content-id="attachSideSheet" data-csa-c-slot-id="attachSideSheet_feature_div" data-csa-c-asin="" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="h6jcxd-hy3qjv-f48azd-byt3ci" data-cel-widget="attachSideSheet_feature_div">
+                                                           </div>
+                                <div id="tellAFriendBox_feature_div" class="celwidget" data-feature-name="tellAFriendBox" data-csa-c-type="widget" data-csa-c-content-id="tellAFriendBox" data-csa-c-slot-id="tellAFriendBox_feature_div" data-csa-c-asin="" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="py1k05-dw65qw-1q5tkz-qcxvgq" data-cel-widget="tellAFriendBox_feature_div">
+                                                         </div>
+                                                                                                        <div id="primeDPUpsellStaticContainerNPA" class="celwidget" data-feature-name="primeDPUpsellStaticContainerNPA" data-csa-c-type="widget" data-csa-c-content-id="primeDPUpsellStaticContainerNPA" data-csa-c-slot-id="primeDPUpsellStaticContainerNPA" data-csa-c-asin="" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="xt53y9-bjx37s-1xi6x1-guk73f" data-cel-widget="primeDPUpsellStaticContainerNPA">
+            
+
+[#apex_desktop .a-price]: NOT FOUND
+
+
+=== ELEMENTS CONTAINING '$' ===
+  [] .a-row: $26.99$26.99
+  [] .a-section aok-relative: $26.99$26.99
+  [] .a-row: $26.99$26.99
+  [] .a-price: $26.99$26.99
+  [] .a-offscreen: $26.99
+  [] .: $26.99
+  [] .a-price-symbol: $
+  [] .a-row: $43.61$43.61
+  [] .a-section aok-relative: $43.61$43.61
+  [] .a-row: $43.61$43.61
+  [] .a-price: $43.61$43.61
+  [] .a-offscreen: $43.61
+  [] .: $43.61
+  [] .a-price-symbol: $
+  [] .a-row: $75.00$75.00
+  [] .a-section aok-relative: $75.00$75.00
+  [] .a-row: $75.00$75.00
+  [] .a-price: $75.00$75.00
+  [] .a-offscreen: $75.00
+  [] .: $75.00
+  [] .a-price-symbol: $
+  [] .a-row a-color-price: $28.99$28.99
+  [] .a-price apex-price-to-pay-value: $28.99$28.99
+  [] .a-offscreen: $28.99
+  [] .: $28.99
+  [] .a-price-symbol: $
+  [] .a-price apex-price-to-pay-value: $99.75$99.75
+  [] .a-offscreen: $99.75
+  [] .: $99.75
+  [] .a-price-symbol: $
+  [] .a-offscreen: List: $115.99

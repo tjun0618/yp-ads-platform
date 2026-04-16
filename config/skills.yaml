@@ -1,0 +1,233 @@
+skills:
+  # ─────────────────────────────────────────────────────────────
+  # Google Ads 技能 v5.0
+  # ─────────────────────────────────────────────────────────────
+  google-ads-v5.0:
+    id: google-ads-v5.0
+    name: "Google Ads 创作技能 v5.0"
+    path: skills/google-ads-v5.0/SKILL.md
+    description: "基于用户旅程的专业级 Google Ads 广告创建技能，专为亚马逊联盟商品投放设计"
+    version: "5.0"
+    author: "AI System"
+    
+    references:
+      - product-category-analyzer.md
+      - keyword-engine.md
+      - negative-keywords.md
+      - copy-generator.md
+      - qa-checker.md
+    
+    input_schema:
+      type: object
+      required:
+        - asin
+        - product_name
+        - price
+      properties:
+        asin:
+          type: string
+          description: "Amazon ASIN"
+        product_name:
+          type: string
+          description: "产品名称"
+        price:
+          type: number
+          description: "产品价格 ($)"
+        commission:
+          type: string
+          description: "佣金率 (如 '5%')"
+        rating:
+          type: number
+          description: "Amazon 评分"
+        review_count:
+          type: integer
+          description: "评价数量"
+        brand:
+          type: string
+          description: "品牌名称"
+        category_path:
+          type: string
+          description: "产品类目路径"
+        bullet_points:
+          type: array
+          description: "产品卖点列表"
+        brand_keywords:
+          type: array
+          description: "品牌关键词列表"
+    
+    output_schema:
+      type: object
+      properties:
+        product_analysis:
+          type: object
+          description: "产品分析结果"
+        profitability:
+          type: object
+          description: "盈利可行性评估"
+        campaigns:
+          type: array
+          description: "广告系列列表"
+        account_negative_keywords:
+          type: array
+          description: "账户级否定关键词"
+        sitelinks:
+          type: array
+          description: "站点链接扩展"
+        callouts:
+          type: array
+          description: "附加信息扩展"
+        qa_report:
+          type: object
+          description: "QA 检查报告"
+    
+    qa_checks:
+      - id: price_consistency
+        name: "价格一致性"
+        severity: critical
+        description: "检查文案中的价格是否与输入一致"
+      
+      - id: ad_group_duplicates
+        name: "广告组重复"
+        severity: high
+        description: "检查是否有重复的广告组"
+      
+      - id: keyword_authenticity
+        name: "关键词真实性"
+        severity: high
+        description: "检查关键词是否真实可信"
+      
+      - id: template_residue
+        name: "模板残留"
+        severity: critical
+        description: "检查文案是否有模板套话残留"
+      
+      - id: negative_keyword_fit
+        name: "否定词适配性"
+        severity: medium
+        description: "检查否定关键词是否适合产品品类"
+      
+      - id: char_format
+        name: "字符格式"
+        severity: critical
+        description: "检查标题描述字符数是否符合要求"
+
+
+  # ─────────────────────────────────────────────────────────────
+  # Amazon 采集技能
+  # ─────────────────────────────────────────────────────────────
+  amazon-scraping:
+    id: amazon-scraping
+    name: "Amazon 商品采集技能"
+    path: skills/amazon-scraping/SKILL.md
+    description: "采集 Amazon 商品详情数据"
+    version: "1.0"
+    
+    tools_required:
+      - browser_navigate
+      - browser_extract
+      - db_write
+    
+    input_schema:
+      type: object
+      required:
+        - asin
+        - url
+      properties:
+        asin:
+          type: string
+          description: "Amazon ASIN"
+        url:
+          type: string
+          description: "访问URL (YP tracking_url 或 Amazon直链)"
+    
+    output_schema:
+      type: object
+      properties:
+        title:
+          type: string
+        price:
+          type: string
+        rating:
+          type: number
+        review_count:
+          type: integer
+        bullet_points:
+          type: array
+        description:
+          type: string
+        image_url:
+          type: string
+        availability:
+          type: string
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 关键词采集技能
+  # ─────────────────────────────────────────────────────────────
+  keyword-scraping:
+    id: keyword-scraping
+    name: "Google Suggest 关键词采集"
+    path: skills/keyword-scraping/SKILL.md
+    description: "采集 Google Suggest 品牌关键词"
+    version: "1.0"
+    
+    tools_required:
+      - browser_navigate
+      - browser_extract
+      - db_write
+    
+    input_schema:
+      type: object
+      required:
+        - brand_name
+      properties:
+        brand_name:
+          type: string
+          description: "品牌名称"
+        merchant_id:
+          type: string
+          description: "商户ID"
+    
+    output_schema:
+      type: object
+      properties:
+        keywords:
+          type: array
+          description: "关键词列表"
+        count:
+          type: integer
+          description: "关键词数量"
+
+
+  # ─────────────────────────────────────────────────────────────
+  # 数据分析技能
+  # ─────────────────────────────────────────────────────────────
+  data-analysis:
+    id: data-analysis
+    name: "数据分析技能"
+    path: skills/data-analysis/SKILL.md
+    description: "分析广告效果、商品数据，生成洞察报告"
+    version: "1.0"
+    
+    tools_required:
+      - db_query
+      - file_write
+    
+    analysis_types:
+      - id: ad_performance
+        name: "广告效果分析"
+        description: "分析广告方案的表现指标"
+      
+      - id: product_performance
+        name: "商品表现分析"
+        description: "分析商品的销量、评分等指标"
+      
+      - id: merchant_performance
+        name: "商户表现分析"
+        description: "分析商户整体表现"
+      
+      - id: keyword_analysis
+        name: "关键词分析"
+        description: "分析关键词效果和机会"
+    
+    output_format: markdown

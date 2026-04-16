@@ -1,0 +1,48 @@
+# 系统配置
+system:
+  name: "YP AI System"
+  version: "1.0.0"
+  debug: true
+
+# LLM 配置
+llm:
+  default_provider: qianfan
+  default_model: ernie-4.0-8k
+  
+  providers:
+    qianfan:
+      api_key: ${QIANFAN_AK}
+      secret_key: ${QIANFAN_SK}
+      models:
+        - ernie-4.0-8k
+        - ernie-3.5-8k
+        - ernie-speed-8k
+
+# 数据库配置
+database:
+  host: localhost
+  port: 3306
+  user: root
+  password: admin
+  database: affiliate_marketing
+  pool_size: 5
+
+# 记忆系统配置
+memory:
+  short_term:
+    type: memory  # memory / redis
+    ttl: 3600
+  long_term:
+    type: none  # none / chromadb / milvus
+
+# 日志配置
+logging:
+  level: INFO
+  file: logs/ai_system.log
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# API 配置
+api:
+  host: "0.0.0.0"
+  port: 5055
+  sse_timeout: 300

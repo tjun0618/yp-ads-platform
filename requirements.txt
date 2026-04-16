@@ -1,0 +1,30 @@
+# YP to Feishu - 依赖包
+
+# 核心依赖
+playwright==1.40.0
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# 飞书 SDK
+lark-oapi==1.5.3
+
+# 数据处理
+pandas==2.1.4
+numpy==1.26.2
+
+# 配置管理
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# HTTP 客户端
+httpx==0.25.2
+aiohttp==3.9.1
+
+# 工具库
+tenacity==8.2.3  # 重试机制
+loguru==0.7.2    # 日志
+fake-useragent==1.4.0  # User-Agent 伪装
+
+# 数据验证
+pydantic==2.5.2

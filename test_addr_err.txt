@@ -1,0 +1,6 @@
+(node:1464) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Traceback (most recent call last):
+  File "C:\Users\wuhj\WorkBuddy\20260322085355\yp_to_feishu\test_switch_address.py", line 106, in <module>
+    input("按回车键关闭...")
+EOFError: EOF when reading a line

@@ -1,0 +1,43 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5055
+ * Running on http://192.168.6.158:5055
+Press CTRL+C to quit
+127.0.0.1 - - [27/Mar/2026 14:33:16] "GET /optimize HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 14:33:16] "GET /qs_dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 14:33:16] "GET /competitor_ads HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 14:33:16] "GET /api/ads/scores HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 14:33:16] "GET /api/optimize/uploads HTTP/1.1" 200 -
+127.0.0.1 - - [27/Mar/2026 14:34:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 14:39:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 14:44:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 14:49:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 14:54:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 14:59:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:04:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:09:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:14:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:19:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:24:05] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:29:06] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:34:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:39:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:44:05] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:49:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:54:05] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 15:59:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:04:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:09:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:14:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:19:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:24:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:29:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:34:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:39:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:44:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:49:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:54:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 16:59:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 17:04:04] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 17:09:03] "GET /api/health HTTP/1.1" 404 -
+127.0.0.1 - - [27/Mar/2026 18:19:08] "GET /api/health HTTP/1.1" 404 -

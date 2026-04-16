@@ -1,0 +1,44 @@
+# YP to Feishu - 配置文件
+
+# YP 平台配置
+yp:
+  api_base: "https://yeahpromos.com"
+  merchant_api: "/index/getadvert/getadvert"
+  rate_limit: 10  # 每分钟请求限制
+  timeout: 30  # 请求超时时间(秒)
+  retry_times: 3  # 重试次数
+
+# 亚马逊爬虫配置
+amazon:
+  base_url: "https://www.amazon.com"
+  headless: false  # 是否使用无头浏览器
+  timeout: 60000  # 页面加载超时(毫秒)
+  request_delay: 2  # 请求间隔(秒)
+  max_concurrent: 5  # 最大并发数
+  max_products_per_merchant: 100  # 每个商家最多采集商品数
+
+# 代理配置
+proxy:
+  enabled: false
+  proxy_list: []
+  rotate: false
+
+# 数据处理配置
+data:
+  output_format: "feishu"
+  cache_enabled: true
+  cache_ttl: 3600  # 缓存时间(秒)
+  batch_size: 50  # 批处理大小
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/app.log"
+  rotation: "100 MB"
+  retention: "30 days"
+
+# 性能配置
+performance:
+  use_async: true
+  chunk_size: 10
+  max_workers: 4

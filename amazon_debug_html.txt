@@ -1,0 +1,214 @@
+=== Page URL: https://www.amazon.com/dp/B0BB81YX1V?language=en_US
+=== Page Title: Amazon.com: Kraftic Arts and Crafts Supplies Set for Kids Ages 4-8, Giftable Art Box with 20 Drawers Filled with Assorted DIY Craft Supplies for Toddlers, School Projects, and Homeschool : Toys & Games
+
+============================================================
+PRICE AREA
+============================================================
+
+[#corePriceDisplay_desktop_feature_div] NOT FOUND
+
+[#corePrice_feature_div] NOT FOUND
+
+[#apex_desktop] FOUND (8527 chars):
+
+                            <div data-csa-c-type="widget" data-csa-c-slot-id="apex_dp_center_column" data-csa-c-content-id="apex" data-csa-c-id="nca9ml-dbdqp0-22hrje-4tpyk5">
+                                                                                                                                                                                                                                            <div id="lowestPriceDevices_feature_div" class="celwidget" data-feature-name="lowestPric
+
+[.a-price] NOT FOUND
+
+[#buybox] FOUND (15356 chars):
+
+                                                        <div data-csa-c-type="element" data-csa-c-slot-id="offer_display_content" data-csa-c-content-id="desktop_buybox_group_1" data-csa-c-id="l0jrno-l0rgv-56imi0-apwndx">
+                    <div id="outOfStockBuyBox_feature_div" class="celwidget" data-feature-name="outOfStockBuyBox" data-csa-c-type="widget" data-csa-c-content-id="outOfStockBuyBox" data-csa-c-slot-id="outOfStockBuyBox_feature_div" data-csa-c-asin="B0BB81YX1V" data-csa-c-is-in-in
+
+[#ppd] FOUND (149124 chars):
+
+ <div id="rightCol" class="rightCol">
+                               <div id="attachAccessoryModal_feature_div" class="celwidget" data-feature-name="attachAccessoryModal" data-csa-c-type="widget" data-csa-c-content-id="attachAccessoryModal" data-csa-c-slot-id="attachAccessoryModal_feature_div" data-csa-c-asin="" data-csa-c-is-in-initial-active-row="false" data-csa-c-id="mjwsxp-cw2wc6-a20ah5-4iv4hz" data-cel-widget="attachAccessoryModal_feature_div">
+                                             
+
+============================================================
+RATING AREA
+============================================================
+
+[#averageCustomerReviews] NOT FOUND
+
+[#acrPopover] NOT FOUND
+
+[[data-feature-name="averageCustomerReviews"]] FOUND (62 chars):
+
+                                                             
+
+[#reviewsMedley] FOUND (112301 chars):
+<div class="a-fixed-left-grid-inner" style="padding-left:300px"><div class="a-fixed-left-grid-col a-col-left" style="width:300px;margin-left:-300px;float:left;"><span class="cr-widget-TitleRatingsHistogram">
+        <div class="celwidget c-f" cel_widget_id="cr-ratings-histogram_customer-reviews-deta
+
+[.a-star-5] FOUND (50 chars):
+<span class="a-icon-alt">5.0 out of 5 stars</span>
+
+============================================================
+BULLET POINTS AREA
+============================================================
+
+[#feature-bullets] FOUND (42 chars):
+                                          
+
+[#productFactsDesktopExpander] NOT FOUND
+
+[[data-feature-name="featurebullets"]] NOT FOUND
+
+[.a-unordered-list.a-vertical.a-spacing-mini] NOT FOUND
+
+============================================================
+PRODUCT DETAILS AREA
+============================================================
+
+[#detailBullets_feature_div] NOT FOUND
+
+[#productDetails_feature_div] FOUND (95767 chars):
+
+                            <a id="productDetails" name="productDetails"></a>
+    <hr aria-hidden="true" class="a-divider-normal">  <div>
+                    <div id="prodDetails" class="a-section a-spacing-medium">               <h1 class="a-size-large a-spacing-small a-text-bold"> Product information </h1>       <div class="a-row">  <div class="a-column a-span12 a-span-last">           <div id="productDetails_expanderSectionTables" class="a-section">  <script type="a-state" data-a-state="{&quot;key&quot;:&quot;voyager-desktop-context&quot;}">{"product_type":"ART_CRAFT_KIT","voyager-desktop-treatment":"C"}</script>  <div class="a-row"> <div class="a-column a-span6">  <div class="a-row">        <div id="productDetails_expanderTables_depthLeftSections" class="a-section">   <div data-csa-c-
+
+[#productDetails_techSpec_section_1] NOT FOUND
+
+[#detailBulletsWrapper_feature_div] NOT FOUND
+
+============================================================
+TITLE & BRAND
+============================================================
+
+[#productTitle]: Kraftic Arts and Crafts Supplies Set for Kids Ages 4-8, Giftable Art Box with 20 Drawers Filled with Assorted DIY Craft Supplies for Toddlers, School Projects, and Homeschool
+
+[#bylineInfo]: Visit the Kraftic Store
+
+[.product-title-word-break]: Kraftic Arts and Crafts Supplies Set for Kids Ages 4-8, Giftable Art Box with 20 Drawers Filled with Assorted DIY Craft Supplies for Toddlers, School Projects, and Homeschool
+
+============================================================
+BODY TEXT SNIPPET (first 1000 chars)
+============================================================
+Skip to
+Main content
+About this item
+Buying options
+Videos
+Reviews
+Keyboard shortcuts
+Search
+alt
++
+/
+Cart
+shift
++
+alt
++
+C
+Home
+shift
++
+alt
++
+H
+Orders
+shift
++
+alt
++
+O
+Show/Hide shortcuts
+shift
++
+alt
++
+Z
+To move between items, use your keyboard's up or down arrows.
+Deliver to
+China
+All
+All Departments
+Arts & Crafts
+Automotive
+Baby
+Beauty & Personal Care
+Books
+Boys' Fashion
+Computers
+Deals
+Digital Music
+Electronics
+Girls' Fashion
+Health & Household
+Home & Kitchen
+Industrial & Scientific
+Kindle Store
+Luggage
+Men's Fashion
+Movies & TV
+Music, CDs & Vinyl
+Pet Supplies
+Prime Video
+Software
+Sports & Outdoors
+Tools & Home Improvement
+Toys & Games
+Video Games
+Women's Fashion
+EN
+Hello, sign in
+Account & Lists
+Returns
+& Orders
+0
+Cart
+We're showing you items that ship to China. To see items that ship to a different country, change your delivery address.
+Dismiss
+ 
+Change Address
+All
+Today's Deals
+Gift Cards
+Sell
+Registry
+Prime Video
+Customer Service
+Disability Customer Support
+Product summary presents key product information 
+Keyboard shortcut  shift + alt + D
+Toys & Games
+›
+Arts & Crafts
+›
+Craft Kits
+Currently unavailable.
+We don't know when or if this item will be back in stock. 
+Deliver to China
+Add to List
+Click to see full view
+	
+	
+Kraftic Arts and Crafts Supplies Set for Kids Ages 4-8, Giftable Art Box with 20 Drawers Filled with Assorted DIY Craft Supplies for Toddlers, School Projects, and Homeschool
+Visit the Kraftic Store
+Currently unavailable.
+We don't know when or if this item will be back in stock.
+Additional Details
+	
+Small Business
+This product is from a small business brand. Support small. Learn more
+This product is from a small business brand. Support small. Learn more
+Report an issue with this product or seller
+Product information
+Item details
+Brand Name	Kraftic
+Manufacturer	Kraftic
+ASIN	B0BB81YX1V
+Feedback
+Would you like to tell us about a lower price? 
+Product Videos
+-0:00
+Nikki T
+Earns commissions
+2000+ Pieces Arts and Crafts Set For Kids
+Top
+Product informati

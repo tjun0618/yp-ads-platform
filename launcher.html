@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YP Affiliate · 启动控制台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d1117;
+    color: #e6edf3;
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 16px;
+  }
+
+  .header { text-align: center; margin-bottom: 36px; }
+  .header h1 { font-size: 26px; font-weight: 700; color: #58a6ff; letter-spacing: 1px; margin-bottom: 6px; }
+  .header p  { color: #8b949e; font-size: 14px; }
+
+  .status-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+    padding: 20px 28px; width: 100%; max-width: 700px; margin-bottom: 28px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .status-dot {
+    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+    animation: pulse 2s infinite;
+  }
+  .status-dot.online   { background: #3fb950; box-shadow: 0 0 8px #3fb950; }
+  .status-dot.offline  { background: #f85149; box-shadow: 0 0 8px #f85149; animation: none; }
+  .status-dot.checking { background: #d29922; box-shadow: 0 0 8px #d29922; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .status-info { flex: 1; }
+  .status-title { font-size: 15px; font-weight: 600; margin-bottom: 3px; }
+  .status-sub   { font-size: 12px; color: #8b949e; }
+  .status-actions { display: flex; gap: 10px; }
+
+  .btn {
+    padding: 8px 18px; border: none; border-radius: 8px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: all .15s; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary  { background: #238636; color: #fff; }
+  .btn-primary:hover  { background: #2ea043; }
+  .btn-danger   { background: #b62324; color: #fff; }
+  .btn-danger:hover   { background: #d1242f; }
+  .btn-neutral  { background: #21262d; color: #e6edf3; border: 1px solid #30363d; }
+  .btn-neutral:hover  { background: #30363d; }
+  .btn-link     { background: #1f6feb; color: #fff; }
+  .btn-link:hover     { background: #388bfd; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .section-title {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #8b949e; margin-bottom: 12px;
+  }
+  .section { width: 100%; max-width: 700px; margin-bottom: 24px; }
+
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;
+  }
+  .module-card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 16px; cursor: pointer; transition: all .15s;
+    text-decoration: none; color: inherit; display: block;
+  }
+  .module-card:hover {
+    border-color: #58a6ff; background: #1c2230; transform: translateY(-1px);
+  }
+  .module-card .icon { font-size: 20px; margin-bottom: 8px; }
+  .module-card .name { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+  .module-card .desc { font-size: 11px; color: #8b949e; }
+  .module-card .path { font-size: 10px; color: #388bfd; margin-top: 6px; font-family: monospace; }
+
+  .log-box {
+    width: 100%; max-width: 700px; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 10px;
+    padding: 14px 16px; font-family: 'Consolas', monospace;
+    font-size: 12px; line-height: 1.6; min-height: 80px;
+    max-height: 160px; overflow-y: auto; color: #8b949e;
+  }
+  .log-box .ok  { color: #3fb950; }
+  .log-box .err { color: #f85149; }
+  .log-box .info { color: #58a6ff; }
+  .log-box .warn { color: #d29922; }
+
+  .footer { margin-top: 32px; font-size: 11px; color: #484f58; text-align: center; }
+
+  /* Modal overlay */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,.7); display: flex; align-items: center;
+    justify-content: center; z-index: 9999;
+  }
+  .modal-box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 14px;
+    padding: 32px 36px; text-align: center; max-width: 420px;
+  }
+  .modal-box .icon-big { font-size: 32px; margin-bottom: 12px; }
+  .modal-box h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #e6edf3; }
+  .modal-box p  { font-size: 13px; color: #8b949e; margin-bottom: 20px; line-height: 1.6; }
+  .modal-box code { color: #58a6ff; font-size: 12px; }
+  .modal-box .cmd {
+    display: inline-block; background: #0d1117; padding: 4px 8px;
+    border-radius: 4px; font-size: 11px; color: #3fb950; margin-top: 8px;
+  }
+  .modal-btn {
+    background: #238636; border: none; border-radius: 8px;
+    color: #fff; padding: 10px 24px; font-size: 14px; font-weight: 600;
+    cursor: pointer; margin: 0 6px;
+  }
+  .modal-btn:hover { background: #2ea043; }
+  .modal-btn.secondary { background: #21262d; border: 1px solid #30363d; }
+  .modal-btn.secondary:hover { background: #30363d; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>YP Affiliate - Ads Management Platform</h1>
+  <p>Google Ads Affiliate Marketing Console - US Market</p>
+</div>
+
+<!-- Status Card -->
+<div class="status-card">
+  <div class="status-dot checking" id="statusDot"></div>
+  <div class="status-info">
+    <div class="status-title" id="statusTitle">Checking service status...</div>
+    <div class="status-sub" id="statusSub">http://localhost:5055</div>
+  </div>
+  <div class="status-actions">
+    <button class="btn btn-primary" id="btnStart" onclick="startServer()">Start</button>
+    <button class="btn btn-danger"  id="btnStop"  onclick="stopServer()" style="display:none">Stop</button>
+    <button class="btn btn-neutral" onclick="checkStatus()">Refresh</button>
+    <a class="btn btn-link" href="http://localhost:5055" target="_blank" id="btnOpen">Open</a>
+  </div>
+</div>
+
+<!-- Core Modules -->
+<div class="section">
+  <div class="section-title">Core Functions</div>
+  <div class="grid">
+    <a class="module-card" href="http://localhost:5055/" target="_blank">
+      <div class="icon">HOME</div>
+      <div class="name">System Home</div>
+      <div class="desc">Quick entry / Overview</div>
+      <div class="path">/</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/products" target="_blank">
+      <div class="icon">BOX</div>
+      <div class="name">Products</div>
+      <div class="desc">Full product list / Scoring</div>
+      <div class="path">/products</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/plans" target="_blank">
+      <div class="icon">CLIP</div>
+      <div class="name">Ad Plans</div>
+      <div class="desc">AI generate / View / Edit</div>
+      <div class="path">/plans</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/merchants" target="_blank">
+      <div class="icon">SHOP</div>
+      <div class="name">Merchants</div>
+      <div class="desc">YP merchant browse / Search</div>
+      <div class="path">/merchants</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/merchant_room" target="_blank">
+      <div class="icon">SWORD</div>
+      <div class="name">War Room</div>
+      <div class="desc">Keywords + Competitor + Ads</div>
+      <div class="path">/merchant_room</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/optimize" target="_blank">
+      <div class="icon">CHART</div>
+      <div class="name">Optimize</div>
+      <div class="desc">Upload data / KPI dashboard</div>
+      <div class="path">/optimize</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/qs_dashboard" target="_blank">
+      <div class="icon">STAR</div>
+      <div class="name">QS Score</div>
+      <div class="desc">5-dimension quality score</div>
+      <div class="path">/qs_dashboard</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/competitor_ads" target="_blank">
+      <div class="icon">EYE</div>
+      <div class="name">Competitor Ads</div>
+      <div class="desc">SEMrush ad reference</div>
+      <div class="path">/competitor_ads</div>
+    </a>
+  </div>
+</div>
+
+<!-- Data Collection -->
+<div class="section">
+  <div class="section-title">Data Collection</div>
+  <div class="grid">
+    <a class="module-card" href="http://localhost:5055/yp_collect" target="_blank">
+      <div class="icon">DL</div>
+      <div class="name">YP Collect</div>
+      <div class="desc">Download YP brand data</div>
+      <div class="path">/yp_collect</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/amazon_scrape" target="_blank">
+      <div class="icon">CART</div>
+      <div class="name">Amazon Scrape</div>
+      <div class="desc">Scrape Amazon details</div>
+      <div class="path">/amazon_scrape</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/yp_sync" target="_blank">
+      <div class="icon">SYNC</div>
+      <div class="name">YP Full Sync</div>
+      <div class="desc">Sync all merchant data</div>
+      <div class="path">/yp_sync</div>
+    </a>
+    <a class="module-card" href="http://localhost:5055/merchant_products" target="_blank">
+      <div class="icon">FOLDER</div>
+      <div class="name">Merchant Products</div>
+      <div class="desc">View products by merchant</div>
+      <div class="path">/merchant_products</div>
+    </a>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="section">
+  <div class="section-title">Operation Log</div>
+  <div class="log-box" id="logBox">
+    <span class="info">[INFO]</span> Console ready, checking service status...<br>
+  </div>
+</div>
+
+<div class="footer">
+  YP Affiliate - Google Ads Management - US Market
+</div>
+
+<!-- Modal container (always in DOM, hidden by default) -->
+<div class="modal-overlay" id="startModal" style="display:none">
+  <div class="modal-box">
+    <div class="icon-big">ROCKET</div>
+    <h3>Start the service</h3>
+    <p>
+      Double-click the startup script in the folder:<br>
+      <code>launch.bat</code><br><br>
+      Or run in terminal:<br>
+      <span class="cmd">python -X utf8 ads_manager.py</span>
+    </p>
+    <div>
+      <button class="modal-btn" id="modalDoneBtn">Started, check now</button>
+      <button class="modal-btn secondary" id="modalCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var BASE = 'http://localhost:5055';
+var STATUS_OK = false;
+
+function log(msg, cls) {
+  cls = cls || '';
+  var box = document.getElementById('logBox');
+  var ts = new Date().toLocaleTimeString();
+  box.innerHTML += '<span class="' + cls + '">[' + ts + '] ' + msg + '</span><br>';
+  box.scrollTop = box.scrollHeight;
+}
+
+function setStatus(online) {
+  STATUS_OK = !!online;
+  var dot   = document.getElementById('statusDot');
+  var title = document.getElementById('statusTitle');
+  var sub   = document.getElementById('statusSub');
+  var btnStart = document.getElementById('btnStart');
+  var btnStop  = document.getElementById('btnStop');
+
+  if (online === null) {
+    dot.className   = 'status-dot checking';
+    title.textContent = 'Checking service status...';
+    sub.textContent   = 'http://localhost:5055';
+    return;
+  }
+  if (online) {
+    dot.className   = 'status-dot online';
+    title.textContent = 'Service Online';
+    sub.textContent   = 'http://localhost:5055  -  Click "Open" to enter';
+    btnStart.style.display = 'none';
+    btnStop.style.display  = '';
+  } else {
+    dot.className   = 'status-dot offline';
+    title.textContent = 'Service Offline';
+    sub.textContent   = 'Click "Start" to launch the service';
+    btnStart.style.display = '';
+    btnStop.style.display  = 'none';
+  }
+}
+
+function checkStatus() {
+  setStatus(null);
+  log('Checking service status...', 'info');
+  var xhr = new XMLHttpRequest();
+  xhr.timeout = 4000;
+  xhr.onload = function() {
+    if (xhr.status < 500) {
+      setStatus(true);
+      log('Service online', 'ok');
+    } else {
+      setStatus(false);
+      log('Service error HTTP ' + xhr.status, 'warn');
+    }
+  };
+  xhr.onerror = function() {
+    setStatus(false);
+    log('Service offline or unreachable', 'err');
+  };
+  xhr.ontimeout = function() {
+    setStatus(false);
+    log('Check timeout (4s)', 'err');
+  };
+  try {
+    xhr.open('HEAD', BASE + '/', true);
+    xhr.send();
+  } catch(e) {
+    setStatus(false);
+    log('Network error (may be file:// CORS restriction)', 'err');
+  }
+}
+
+function startServer() {
+  log('Opening start guide...', 'info');
+  document.getElementById('startModal').style.display = '';
+}
+
+function stopServer() {
+  if (!confirm('Stop the service?\n\nThe management interface will be unavailable.')) return;
+  
+  log('Sending stop request...', 'info');
+  
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', BASE + '/api/server/stop', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      log('Server stopped successfully', 'ok');
+      setTimeout(function() {
+        setStatus(false);
+        log('Service is now offline', 'warn');
+      }, 1500);
+    } else {
+      log('Failed to stop server: HTTP ' + xhr.status, 'err');
+    }
+  };
+  xhr.onerror = function() {
+    log('Server already stopped or unreachable', 'warn');
+    setStatus(false);
+  };
+  
+  try {
+    xhr.send('{}');
+  } catch(e) {
+    log('Error sending stop request: ' + e.message, 'err');
+    setStatus(false);
+  }
+}
+
+// Modal button event listeners (no inline onclick to avoid string escaping issues)
+document.getElementById('modalDoneBtn').addEventListener('click', function() {
+  document.getElementById('startModal').style.display = 'none';
+  checkStatus();
+});
+document.getElementById('modalCancelBtn').addEventListener('click', function() {
+  document.getElementById('startModal').style.display = 'none';
+});
+
+// Auto check every 10 seconds
+checkStatus();
+setInterval(checkStatus, 10000);
+</script>
+</body>
+</html>
