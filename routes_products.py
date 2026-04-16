@@ -4832,6 +4832,9 @@ def api_workflow_ads_status(task_id):
     if status == "completed":
         result = task.get("result", {})
         response["result"] = result
+        print(f"[Status] Result keys: {list(result.keys())}")
+        print(f"[Status] filename_txt: {result.get('filename_txt')}")
+        print(f"[Status] download_url_txt: {result.get('download_url_txt')}")
         summary = f"广告方案已生成 ({result.get('method', 'unknown')})<br>"
         summary += f"<a href='{result.get('download_url_txt', '')}' download='{result.get('filename_txt', '')}'>📄 下载 TXT (可复制)</a> | "
         summary += f"<a href='{result.get('download_url', '')}' download='{result.get('filename', '')}'>📥 下载 JSON</a>"
