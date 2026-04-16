@@ -3504,19 +3504,27 @@ def api_workflow_website(merchant_id):
 
 @bp.route("/api/workflow/keywords/<merchant_id>", methods=["POST"])
 def api_workflow_keywords(merchant_id):
-    """Step 3: 获取品牌关键词"""
+    """
+    Step 3: 获取或采集品牌关键词
+
+    支持 Google 和 Bing 双引擎：
+    1. 先检查数据库中是否已有数据
+    2. 如果没有，尝试 Google Suggest API
+    3. 如果 Google 失败，降级到 Bing 搜索
+    """
     try:
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
+        # 1. 检查数据库
         cur.execute(
             "SELECT keyword FROM ads_merchant_keywords WHERE merchant_id = %s ORDER BY keyword",
             (merchant_id,),
         )
         keywords = [r["keyword"] for r in cur.fetchall()]
-        conn.close()
 
         if keywords:
+            conn.close()
             return jsonify(
                 {
                     "success": True,
@@ -3524,17 +3532,287 @@ def api_workflow_keywords(merchant_id):
                     "summary": f"已获取 {len(keywords)} 个品牌关键词",
                 }
             )
-        else:
+
+        # 2. 获取商户信息
+        cur.execute(
+            "SELECT merchant_name, website FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
+            (merchant_id,),
+        )
+        merchant = cur.fetchone()
+        conn.close()
+
+        if not merchant:
+            return jsonify({"success": False, "error": f"商户 {merchant_id} 不存在"})
+
+        merchant_name = merchant.get("merchant_name") or merchant_id
+
+        # 3. 尝试采集关键词
+        all_keywords = []
+        source = None
+
+        # 3.1 尝试 Google Suggest
+        try:
+            google_keywords = _fetch_google_suggest(merchant_name)
+            if google_keywords:
+                all_keywords = google_keywords
+                source = "google"
+                print(
+                    f"[Workflow] Google Suggest 成功: {len(google_keywords)} 个关键词"
+                )
+        except Exception as e:
+            print(f"[Workflow] Google Suggest 失败: {e}")
+
+        # 3.2 如果 Google 失败，尝试 Bing
+        if not all_keywords:
+            try:
+                bing_keywords = _fetch_bing_suggest(merchant_name)
+                if bing_keywords:
+                    all_keywords = bing_keywords
+                    source = "bing"
+                    print(
+                        f"[Workflow] Bing Suggest 成功: {len(bing_keywords)} 个关键词"
+                    )
+            except Exception as e:
+                print(f"[Workflow] Bing Suggest 失败: {e}")
+
+        # 4. 保存到数据库
+        if all_keywords:
+            conn = get_db()
+            cur = conn.cursor()
+
+            # 删除旧数据
+            cur.execute(
+                "DELETE FROM ads_merchant_keywords WHERE merchant_id = %s",
+                (merchant_id,),
+            )
+
+            # 插入新数据
+            for kw in all_keywords[:50]:  # 最多保存 50 个
+                cur.execute(
+                    "INSERT INTO ads_merchant_keywords (merchant_id, keyword, keyword_source) VALUES (%s, %s, %s)",
+                    (merchant_id, kw, source),
+                )
+            conn.commit()
+            conn.close()
+
             return jsonify(
                 {
                     "success": True,
-                    "data": {"keywords": [], "count": 0},
-                    "summary": "暂无品牌关键词",
+                    "data": {
+                        "keywords": all_keywords[:50],
+                        "count": len(all_keywords[:50]),
+                    },
+                    "summary": f"已采集 {len(all_keywords[:50])} 个关键词 (来源: {source.upper()})",
                 }
             )
 
+        return jsonify(
+            {
+                "success": True,
+                "data": {"keywords": [], "count": 0},
+                "summary": "暂无品牌关键词，Google 和 Bing 采集均失败",
+            }
+        )
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+def _fetch_google_suggest(merchant_name: str) -> list:
+    """
+    通过 Google Suggest API 获取关键词建议
+
+    Args:
+        merchant_name: 商户名称
+
+    Returns:
+        关键词列表
+    """
+    import urllib.request
+    import urllib.parse
+    import json
+    import re
+
+    # 清理品牌名
+    brand = re.sub(
+        r"\s+(US|UK|EU|AU|CA|COM|INC|LLC|LTD|CO\.|CORP\.?)$",
+        "",
+        merchant_name,
+        flags=re.IGNORECASE,
+    ).strip()
+    brand = re.sub(r"\.(com|net|org|io|co)$", "", brand, flags=re.IGNORECASE).strip()
+
+    # 查询模板
+    templates = [
+        "{brand}",
+        "{brand} product",
+        "{brand} review",
+    ]
+
+    all_keywords = []
+    suggest_url = "https://suggestqueries.google.com/complete/search"
+
+    for template in templates:
+        query = template.format(brand=brand)
+        params = urllib.parse.urlencode(
+            {
+                "client": "firefox",
+                "q": query,
+                "hl": "en",
+                "gl": "us",
+            }
+        )
+        url = f"{suggest_url}?{params}"
+
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:  # 缩短超时时间
+                data = json.loads(resp.read().decode("utf-8"))
+                if isinstance(data, list) and len(data) > 1:
+                    suggestions = data[1]
+                    if isinstance(suggestions, list):
+                        all_keywords.extend(
+                            [s for s in suggestions if isinstance(s, str)]
+                        )
+        except Exception as e:
+            print(f"[Google] 查询 '{query}' 失败: {e}")
+
+    # 去重
+    return list(dict.fromkeys(all_keywords))
+
+
+def _fetch_bing_suggest(merchant_name: str) -> list:
+    """
+    通过 Bing 搜索获取关键词建议
+
+    使用 Bing 国际版 (bing.com) 的搜索建议
+
+    Args:
+        merchant_name: 商户名称
+
+    Returns:
+        关键词列表
+    """
+    import urllib.request
+    import urllib.parse
+    import json
+    import re
+
+    # 清理品牌名
+    brand = re.sub(
+        r"\s+(US|UK|EU|AU|CA|COM|INC|LLC|LTD|CO\.|CORP\.?)$",
+        "",
+        merchant_name,
+        flags=re.IGNORECASE,
+    ).strip()
+    brand = re.sub(r"\.(com|net|org|io|co)$", "", brand, flags=re.IGNORECASE).strip()
+
+    # 查询模板
+    templates = [
+        "{brand}",
+        "{brand} product",
+        "{brand} review",
+    ]
+
+    all_keywords = []
+
+    # 方法1: Bing Autosuggest API
+    autosuggest_url = "https://api.bing.com/osjson.aspx"
+
+    for template in templates:
+        query = template.format(brand=brand)
+        params = urllib.parse.urlencode(
+            {
+                "query": query,
+                "market": "en-US",
+            }
+        )
+        url = f"{autosuggest_url}?{params}"
+
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:  # 缩短超时时间
+                data = json.loads(resp.read().decode("utf-8"))
+                # Bing Autosuggest 返回格式: ["query", ["s1","s2",...]]
+                if isinstance(data, list) and len(data) > 1:
+                    suggestions = data[1]
+                    if isinstance(suggestions, list):
+                        all_keywords.extend(
+                            [s for s in suggestions if isinstance(s, str)]
+                        )
+        except Exception as e:
+            print(f"[Bing] 查询 '{query}' 失败: {e}")
+
+    # 方法2: 如果方法1失败，尝试 DuckDuckGo (作为备选)
+    if not all_keywords:
+        try:
+            ddg_keywords = _fetch_duckduckgo_suggest(brand)
+            all_keywords.extend(ddg_keywords)
+        except Exception as e:
+            print(f"[DuckDuckGo] 失败: {e}")
+
+    # 去重
+    return list(dict.fromkeys(all_keywords))
+
+
+def _fetch_duckduckgo_suggest(brand: str) -> list:
+    """
+    通过 DuckDuckGo 获取关键词建议（作为 Bing 的备选）
+    """
+    import urllib.request
+    import urllib.parse
+    import json
+
+    all_keywords = []
+    ddg_url = "https://duckduckgo.com/ac/"
+
+    templates = [
+        "{brand}",
+        "{brand} product",
+        "{brand} review",
+    ]
+
+    for template in templates:
+        query = template.format(brand=brand)
+        params = urllib.parse.urlencode(
+            {
+                "q": query,
+                "kl": "wt-wt",  # 全球
+            }
+        )
+        url = f"{ddg_url}?{params}"
+
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                    "Accept": "application/json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                # DuckDuckGo 返回格式: [{"phrase": "s1"}, {"phrase": "s2"}, ...]
+                if isinstance(data, list):
+                    for item in data:
+                        if isinstance(item, dict) and "phrase" in item:
+                            all_keywords.append(item["phrase"])
+        except Exception as e:
+            print(f"[DuckDuckGo] 查询 '{query}' 失败: {e}")
+
+    return all_keywords
 
 
 @bp.route("/api/workflow/semrush/<merchant_id>", methods=["POST"])
