@@ -3539,41 +3539,247 @@ def api_workflow_keywords(merchant_id):
 
 @bp.route("/api/workflow/semrush/<merchant_id>", methods=["POST"])
 def api_workflow_semrush(merchant_id):
-    """Step 4: 获取 SEMrush 数据"""
+    """
+    Step 4: 获取或采集 SEMrush 数据
+
+    逻辑：
+    1. 先检查数据库中是否已有数据
+    2. 如果没有，检查是否有采集结果文件
+    3. 如果都没有，触发采集并返回采集状态
+    """
     try:
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
+        # 1. 检查数据库
         cur.execute(
-            "SELECT id, domain, organic_keywords, paid_keywords FROM semrush_data WHERE merchant_id = %s LIMIT 1",
+            "SELECT id, domain, organic_keywords, paid_keywords, organic_traffic, paid_traffic, authority_score FROM semrush_data WHERE merchant_id = %s LIMIT 1",
             (merchant_id,),
         )
         semrush = cur.fetchone()
-        conn.close()
 
         if semrush:
+            conn.close()
             return jsonify(
                 {
                     "success": True,
                     "data": {
                         "has_data": True,
-                        "organic_keywords": semrush.get("organic_keywords"),
-                        "paid_keywords": semrush.get("paid_keywords"),
+                        "domain": semrush.get("domain"),
+                        "organic_keywords": semrush.get("organic_keywords", 0),
+                        "paid_keywords": semrush.get("paid_keywords", 0),
+                        "organic_traffic": semrush.get("organic_traffic", 0),
+                        "paid_traffic": semrush.get("paid_traffic", 0),
+                        "authority_score": semrush.get("authority_score", 0),
                     },
-                    "summary": "SEMrush 数据已存在",
-                }
-            )
-        else:
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "暂无 SEMrush 数据，请先采集",
-                    "hint": "运行 semrush_via_wmx.py 采集数据",
+                    "summary": f"SEMrush 数据已存在 (域名: {semrush.get('domain')}, 自然词: {semrush.get('organic_keywords', 0)}, 付费词: {semrush.get('paid_keywords', 0)})",
                 }
             )
 
+        # 2. 检查采集结果文件
+        result_file = BASE_DIR / "temp" / f"semrush_collected_{merchant_id}.json"
+        if result_file.exists():
+            try:
+                import json
+
+                file_data = json.loads(result_file.read_text(encoding="utf-8"))
+
+                # 保存到数据库
+                _save_semrush_to_db(merchant_id, file_data, cur, conn)
+
+                # 从文件数据中提取统计信息
+                semrush_data = file_data.get("data", {})
+                organic_keywords = semrush_data.get("organic_keywords", {})
+                paid_keywords = semrush_data.get("paid_keywords", {})
+                traffic = semrush_data.get("traffic", {})
+
+                organic_count = (
+                    organic_keywords.get("total", 0)
+                    if isinstance(organic_keywords, dict)
+                    else 0
+                )
+                paid_count = (
+                    paid_keywords.get("total", 0)
+                    if isinstance(paid_keywords, dict)
+                    else 0
+                )
+
+                return jsonify(
+                    {
+                        "success": True,
+                        "data": {
+                            "has_data": True,
+                            "domain": file_data.get("domain"),
+                            "organic_keywords": organic_count,
+                            "paid_keywords": paid_count,
+                            "organic_traffic": traffic.get("organic", 0)
+                            if isinstance(traffic, dict)
+                            else 0,
+                            "paid_traffic": traffic.get("paid", 0)
+                            if isinstance(traffic, dict)
+                            else 0,
+                            "authority_score": traffic.get("authority_score", 0)
+                            if isinstance(traffic, dict)
+                            else 0,
+                        },
+                        "summary": f"SEMrush 数据已加载 (域名: {file_data.get('domain')}, 自然词: {organic_count}, 付费词: {paid_count})",
+                    }
+                )
+            except Exception as e:
+                print(f"[Workflow] 读取 SEMrush 结果文件失败: {e}")
+
+        # 3. 获取商户信息，准备采集
+        cur.execute(
+            "SELECT merchant_name, website FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
+            (merchant_id,),
+        )
+        merchant = cur.fetchone()
+        conn.close()
+
+        if not merchant:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"商户 {merchant_id} 不存在",
+                }
+            )
+
+        domain = (merchant.get("website") or "").strip()
+        merchant_name = merchant.get("merchant_name") or merchant_id
+
+        if not domain:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "商户没有官网域名，无法采集 SEMrush 数据",
+                    "need_domain": True,
+                    "hint": "请在商户作战室手动输入域名后采集",
+                }
+            )
+
+        # 4. 触发采集
+        sem_script = BASE_DIR / "semrush_via_wmx.py"
+        if not sem_script.exists():
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "semrush_via_wmx.py 脚本不存在",
+                }
+            )
+
+        # 创建启动脚本
+        bat_file = BASE_DIR / f"_launch_semrush_{merchant_id}.bat"
+        bat_content = (
+            f'@echo off\r\ncd /d "{BASE_DIR}"\r\ntitle SEMrush采集 - {merchant_name}\r\n'
+            f"echo ========================================\r\n"
+            f"echo  SEMrush 数据采集 - 外贸侠模式\r\n"
+            f"echo  商户: {merchant_name}\r\n"
+            f"echo  域名: {domain}\r\n"
+            f"echo ========================================\r\n"
+            f"echo.\r\n"
+            f'"{PYTHON_EXE}" -X utf8 "{sem_script}" "{merchant_id}" "{domain}"\r\n'
+            f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
+        )
+        bat_file.write_text(bat_content, encoding="gbk")
+
+        # 启动新窗口
+        subprocess.Popen(
+            [
+                "cmd.exe",
+                "/c",
+                "start",
+                f"SEMrush_{merchant_name}",
+                "cmd.exe",
+                "/k",
+                str(bat_file),
+            ],
+            cwd=str(BASE_DIR),
+            shell=False,
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "collecting": True,
+                "message": f"SEMrush 采集已启动 (域名: {domain})",
+                "domain": domain,
+                "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+            }
+        )
+
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
+    """保存 SEMrush 数据到数据库"""
+
+    # 从采集结果中提取数据
+    semrush_data = data.get("data", {})
+    domain = data.get("domain") or semrush_data.get("domain", "")
+
+    # 流量数据
+    traffic = semrush_data.get("traffic", {})
+    organic_traffic = traffic.get("organic", 0) if isinstance(traffic, dict) else 0
+    paid_traffic = traffic.get("paid", 0) if isinstance(traffic, dict) else 0
+    authority_score = (
+        traffic.get("authority_score", 0) if isinstance(traffic, dict) else 0
+    )
+
+    # 关键词数量
+    organic_keywords = semrush_data.get("organic_keywords", {})
+    organic_count = (
+        organic_keywords.get("total", 0) if isinstance(organic_keywords, dict) else 0
+    )
+
+    paid_keywords = semrush_data.get("paid_keywords", {})
+    paid_count = paid_keywords.get("total", 0) if isinstance(paid_keywords, dict) else 0
+
+    # 检查是否已存在
+    cur.execute("SELECT id FROM semrush_data WHERE merchant_id = %s", (merchant_id,))
+    exists = cur.fetchone()
+
+    if exists:
+        cur.execute(
+            """
+            UPDATE semrush_data SET
+                domain = %s,
+                organic_keywords = %s,
+                paid_keywords = %s,
+                organic_traffic = %s,
+                paid_traffic = %s,
+                authority_score = %s,
+                updated_at = NOW()
+            WHERE merchant_id = %s
+        """,
+            (
+                domain,
+                organic_count,
+                paid_count,
+                organic_traffic,
+                paid_traffic,
+                authority_score,
+                merchant_id,
+            ),
+        )
+    else:
+        cur.execute(
+            """
+            INSERT INTO semrush_data (merchant_id, domain, organic_keywords, paid_keywords, organic_traffic, paid_traffic, authority_score, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+        """,
+            (
+                merchant_id,
+                domain,
+                organic_count,
+                paid_count,
+                organic_traffic,
+                paid_traffic,
+                authority_score,
+            ),
+        )
+
+    conn.commit()
 
 
 @bp.route("/api/workflow/products/<merchant_id>", methods=["POST"])

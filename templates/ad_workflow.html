@@ -663,11 +663,13 @@
                         await pollTaskStatus(nodeId, result.task_id);
                     }
                     // 检查是否是"采集已启动"状态
-                    else if (result.data && result.data.collecting) {
+                    else if (result.collecting) {
                         // 采集已启动，不标记为完成，显示提示
                         updateNodeStatus(nodeId, 'ready');
-                        log(`${getNodeTitle(nodeId)}: ${result.summary}`, 'info');
-                        log(`提示: 采集完成后，再次点击此节点刷新数据`, 'info');
+                        log(`${getNodeTitle(nodeId)}: ${result.message}`, 'info');
+                        if (result.hint) {
+                            log(`提示: ${result.hint}`, 'info');
+                        }
                     } else {
                         // 真正完成
                         workflowState[nodeId] = result.data;
