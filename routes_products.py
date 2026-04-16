@@ -5582,10 +5582,13 @@ def _save_ads_plan_to_db(asin: str, ads_plan: dict, product: dict, merchant_id: 
 
 @bp.route("/download/<filename>")
 def download_ads_plan(filename):
-    """下载广告方案 JSON 文件"""
+    """下载广告方案文件（JSON 或 TXT）"""
     try:
-        if not filename.endswith(".json"):
-            return jsonify({"success": False, "error": "只允许下载 JSON 文件"}), 400
+        # 允许下载 JSON 和 TXT 文件
+        if not (filename.endswith(".json") or filename.endswith(".txt")):
+            return jsonify(
+                {"success": False, "error": "只允许下载 JSON 或 TXT 文件"}
+            ), 400
 
         file_path = OUTPUT_DIR / filename
         if not str(file_path.resolve()).startswith(str(OUTPUT_DIR.resolve())):
@@ -5594,11 +5597,17 @@ def download_ads_plan(filename):
         if not file_path.exists():
             return jsonify({"success": False, "error": f"文件 {filename} 不存在"}), 404
 
+        # 根据文件类型设置 MIME 类型
+        if filename.endswith(".json"):
+            mimetype = "application/json"
+        else:
+            mimetype = "text/plain"
+
         return send_file(
             file_path,
             as_attachment=True,
             download_name=filename,
-            mimetype="application/json",
+            mimetype=mimetype,
         )
 
     except Exception as e:
