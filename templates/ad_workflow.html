@@ -654,8 +654,16 @@
             try {
                 const result = await callApi(nodeId);
                 if (result.success) {
+                    // 检查是否是异步任务
+                    if (result.async && result.task_id) {
+                        log(`${getNodeTitle(nodeId)}: ${result.message}`, 'info');
+                        log(`正在后台生成，请稍候...`, 'info');
+                        
+                        // 开始轮询
+                        await pollTaskStatus(nodeId, result.task_id);
+                    }
                     // 检查是否是"采集已启动"状态
-                    if (result.data && result.data.collecting) {
+                    else if (result.data && result.data.collecting) {
                         // 采集已启动，不标记为完成，显示提示
                         updateNodeStatus(nodeId, 'ready');
                         log(`${getNodeTitle(nodeId)}: ${result.summary}`, 'info');
@@ -684,6 +692,40 @@
                 updateNodeStatus(nodeId, 'error');
                 log(`${getNodeTitle(nodeId)} 异常: ${e.message}`, 'error');
             }
+        }
+        
+        // 轮询任务状态
+        async function pollTaskStatus(nodeId, taskId) {
+            const maxAttempts = 60;  // 最多轮询 60 次（约 2 分钟）
+            const interval = 2000;  // 每 2 秒轮询一次
+            
+            for (let i = 0; i < maxAttempts; i++) {
+                await new Promise(resolve => setTimeout(resolve, interval));
+                
+                try {
+                    const response = await fetch(`/api/workflow/ads/status/${taskId}`);
+                    const result = await response.json();
+                    
+                    if (result.status === 'completed') {
+                        workflowState[nodeId] = result.result;
+                        updateNodeStatus(nodeId, 'completed', result.summary);
+                        log(`${getNodeTitle(nodeId)} 完成 (${result.result.method})`, 'success');
+                        return;
+                    } else if (result.status === 'failed') {
+                        updateNodeStatus(nodeId, 'error');
+                        log(`${getNodeTitle(nodeId)} 失败: ${result.error}`, 'error');
+                        return;
+                    } else if (result.status === 'generating') {
+                        log(`AI 正在生成广告方案... (${i + 1}/${maxAttempts})`, 'info');
+                    }
+                } catch (e) {
+                    log(`轮询状态失败: ${e.message}`, 'error');
+                }
+            }
+            
+            // 超时
+            updateNodeStatus(nodeId, 'error');
+            log(`${getNodeTitle(nodeId)} 超时，请稍后重试`, 'error');
         }
         
         // 获取节点标题

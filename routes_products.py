@@ -74,6 +74,113 @@ AD_WORD_REPLACEMENTS = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 异步广告生成任务状态存储
+# ─────────────────────────────────────────────────────────────────────────────
+_ads_generation_tasks = {}  # {task_id: {status, result, error, created_at}}
+_ads_task_lock = threading.Lock()
+
+
+def _get_task_id(asin: str, merchant_id: str) -> str:
+    """生成任务 ID"""
+    return f"{merchant_id}_{asin}"
+
+
+def _background_generate_ads(
+    task_id: str, product: dict, brand_keywords: list, merchant_id: str
+):
+    """后台线程：生成广告方案"""
+    global _ads_generation_tasks
+
+    try:
+        # 更新状态为进行中
+        with _ads_task_lock:
+            _ads_generation_tasks[task_id]["status"] = "generating"
+            _ads_generation_tasks[task_id]["started_at"] = (
+                datetime.datetime.now().isoformat()
+            )
+
+        # 尝试 AI 生成
+        ads_plan = None
+        generation_method = None
+        ai_error = None
+
+        try:
+            ads_plan = _generate_ads_with_ai(product, brand_keywords)
+            if ads_plan:
+                generation_method = "AI"
+        except Exception as e:
+            ai_error = str(e)
+            print(f"[Background] AI generation failed: {e}")
+
+        # AI 失败，降级到规则引擎
+        if not ads_plan:
+            print(f"[Background] Falling back to rule engine...")
+            try:
+                ads_plan = _generate_ads_with_rules(product, brand_keywords)
+                if ads_plan:
+                    generation_method = "Rule Engine (AI fallback)"
+            except Exception as e:
+                raise Exception(f"AI error: {ai_error}, Rule engine error: {str(e)}")
+
+        if not ads_plan:
+            raise Exception("广告生成失败")
+
+        # 保存到数据库
+        _save_ads_plan_to_db(product.get("asin"), ads_plan, product, merchant_id)
+
+        # 生成文件名
+        brand = (product.get("brand") or "Unknown").replace(" ", "")
+        product_short = (
+            (product.get("amz_title") or product.get("product_name") or "Product")[:20]
+            .replace(" ", "")
+            .replace(",", "")
+        )
+        price = int(float(product.get("price") or 0))
+        commission = (product.get("commission") or "0%").replace("%", "pct")
+        filename = f"{brand}-{product_short}-{price}-{commission}.json"
+
+        # 保存文件
+        output_path = OUTPUT_DIR / filename
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(ads_plan, f, ensure_ascii=False, indent=2)
+
+        # 更新状态为完成
+        with _ads_task_lock:
+            _ads_generation_tasks[task_id]["status"] = "completed"
+            _ads_generation_tasks[task_id]["result"] = {
+                "asin": product.get("asin"),
+                "filename": filename,
+                "download_url": f"/download/{filename}",
+                "campaigns": len(ads_plan.get("campaigns", [])),
+                "ad_groups": sum(
+                    len(c.get("ad_groups", [])) for c in ads_plan.get("campaigns", [])
+                ),
+                "keywords": sum(
+                    len(ag.get("keywords", []))
+                    for c in ads_plan.get("campaigns", [])
+                    for ag in c.get("ad_groups", [])
+                ),
+                "method": generation_method,
+            }
+            _ads_generation_tasks[task_id]["completed_at"] = (
+                datetime.datetime.now().isoformat()
+            )
+
+        print(f"[Background] Task {task_id} completed successfully")
+
+    except Exception as e:
+        # 更新状态为失败
+        with _ads_task_lock:
+            _ads_generation_tasks[task_id]["status"] = "failed"
+            _ads_generation_tasks[task_id]["error"] = str(e)
+            _ads_generation_tasks[task_id]["completed_at"] = (
+                datetime.datetime.now().isoformat()
+            )
+
+        print(f"[Background] Task {task_id} failed: {e}")
+
+
 def clean_ad_text(text: str, brand: str = "") -> str:
     """
     清理广告文本，移除敏感词并确保合规
@@ -3742,81 +3849,57 @@ def api_workflow_ads(merchant_id):
         brand_keywords = [r["keyword"] for r in cur.fetchall()]
         conn.close()
 
-        # ── 方案B：AI 优先，降级到规则引擎 ──
-        ads_plan = None
-        generation_method = None
-        ai_error = None
+        # ── 异步生成广告方案 ──
+        task_id = _get_task_id(selected_asin, merchant_id)
 
-        # 暂时跳过 AI，直接使用规则引擎（AI 调用时间过长）
-        # # 尝试 AI 生成
-        # try:
-        #     ads_plan = _generate_ads_with_ai(product, brand_keywords)
-        #     if ads_plan:
-        #         generation_method = "AI"
-        # except Exception as e:
-        #     ai_error = str(e)
-        #     print(f"[Workflow] AI generation failed: {e}")
+        # 检查是否已有任务
+        with _ads_task_lock:
+            if task_id in _ads_generation_tasks:
+                task = _ads_generation_tasks[task_id]
+                if task["status"] == "generating":
+                    return jsonify(
+                        {
+                            "success": True,
+                            "async": True,
+                            "task_id": task_id,
+                            "status": "generating",
+                            "message": "广告正在生成中，请稍后查询结果...",
+                        }
+                    )
+                elif task["status"] == "completed":
+                    # 已完成，返回结果
+                    return jsonify(
+                        {
+                            "success": True,
+                            "data": task["result"],
+                            "summary": f"广告方案已生成 ({task['result']['method']})<br><a href='{task['result']['download_url']}' download='{task['result']['filename']}'>📥 下载 {task['result']['filename']}</a>",
+                        }
+                    )
+                elif task["status"] == "failed":
+                    # 失败，重新生成
+                    pass
 
-        # 直接使用规则引擎
-        if not ads_plan:
-            print(f"[Workflow] Using rule engine...")
-            try:
-                ads_plan = _generate_ads_with_rules(product, brand_keywords)
-                if ads_plan:
-                    generation_method = "Rule Engine"
-            except Exception as e:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": f"广告生成失败: 规则引擎错误={str(e)}",
-                    }
-                )
+            # 创建新任务
+            _ads_generation_tasks[task_id] = {
+                "status": "pending",
+                "created_at": datetime.datetime.now().isoformat(),
+            }
 
-        if not ads_plan:
-            return jsonify({"success": False, "error": "广告生成失败，请稍后重试"})
-
-        # 保存到数据库
-        _save_ads_plan_to_db(selected_asin, ads_plan, product, merchant_id)
-
-        # 生成文件名：品牌-商品-价格-佣金比例
-        brand = (product.get("brand") or "Unknown").replace(" ", "")
-        product_short = (
-            (product.get("amz_title") or product.get("product_name") or "Product")[:20]
-            .replace(" ", "")
-            .replace(",", "")
+        # 启动后台线程
+        thread = threading.Thread(
+            target=_background_generate_ads,
+            args=(task_id, product, brand_keywords, merchant_id),
+            daemon=True,
         )
-        price = int(float(product.get("price") or 0))
-        commission = (product.get("commission") or "0%").replace("%", "pct")
-        filename = f"{brand}-{product_short}-{price}-{commission}.json"
-
-        # 保存文件
-        output_path = OUTPUT_DIR / filename
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(ads_plan, f, ensure_ascii=False, indent=2)
-
-        # 返回下载链接
-        download_url = f"/download/{filename}"
-        campaigns = ads_plan.get("campaigns", [])
-        ad_groups = sum(len(c.get("ad_groups", [])) for c in campaigns)
-        keywords = sum(
-            len(ag.get("keywords", []))
-            for c in campaigns
-            for ag in c.get("ad_groups", [])
-        )
+        thread.start()
 
         return jsonify(
             {
                 "success": True,
-                "data": {
-                    "asin": selected_asin,
-                    "filename": filename,
-                    "download_url": download_url,
-                    "campaigns": len(campaigns),
-                    "ad_groups": ad_groups,
-                    "keywords": keywords,
-                    "method": generation_method,
-                },
-                "summary": f"广告方案已生成 ({generation_method})<br><a href='{download_url}' download='{filename}'>📥 下载 {filename}</a>",
+                "async": True,
+                "task_id": task_id,
+                "status": "pending",
+                "message": "广告生成任务已启动，请轮询查询结果...",
             }
         )
 
@@ -3827,11 +3910,60 @@ def api_workflow_ads(merchant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
+@bp.route("/api/workflow/ads/status/<task_id>", methods=["GET"])
+def api_workflow_ads_status(task_id):
+    """
+    查询广告生成任务状态
+
+    返回：
+    - status: pending | generating | completed | failed
+    - result: 生成结果（仅 completed 时）
+    - error: 错误信息（仅 failed 时）
+    """
+    global _ads_generation_tasks
+
+    with _ads_task_lock:
+        if task_id not in _ads_generation_tasks:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "任务不存在",
+                }
+            )
+
+        task = _ads_generation_tasks[task_id].copy()
+
+    response = {
+        "success": True,
+        "task_id": task_id,
+        "status": task["status"],
+    }
+
+    if task["status"] == "completed":
+        response["result"] = task.get("result", {})
+        response["summary"] = (
+            f"广告方案已生成 ({task['result']['method']})<br><a href='{task['result']['download_url']}' download='{task['result']['filename']}'>📥 下载 {task['result']['filename']}</a>"
+        )
+    elif task["status"] == "failed":
+        response["error"] = task.get("error", "未知错误")
+    elif task["status"] == "generating":
+        response["message"] = "广告正在生成中，请稍后..."
+    else:
+        response["message"] = "任务等待中..."
+
+    return jsonify(response)
+
+
 def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
     """
-    使用 AI + Google Ads 技能生成广告方案
+    使用 AI 生成广告方案（精简 prompt 版本）
+
+    优化策略：
+    1. 精简 prompt - 只保留核心指令，不读取整个技能文件
+    2. 结构化输出 - 明确 JSON 格式要求
     """
     import os
+    import re
 
     asin = product.get("asin", "")
 
@@ -3840,81 +3972,86 @@ def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
         "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
     )
 
-    # 构建产品信息
-    product_info = f"""
-## 产品信息
+    # 解析产品信息
+    title = product.get("amz_title") or product.get("product_name", "")
+    brand = product.get("brand") or "Unknown"
+    price_str = product.get("price") or "0"
+    price = float(price_str) if price_str and price_str != "None" else 0
+    commission_str = product.get("commission") or "0%"
+    commission_rate = (
+        float(re.sub(r"[^0-9.]", "", commission_str)) / 100 if commission_str else 0.15
+    )
 
-- **ASIN**: {asin}
-- **商品名称**: {product.get("amz_title") or product.get("product_name", "未知")}
-- **品牌**: {product.get("brand") or "未知"}
-- **价格**: ${product.get("price", "0")}
-- **佣金率**: {product.get("commission", "0%")}
-- **评分**: {product.get("rating") or "无"} ({product.get("review_count") or 0} 评价)
-- **类目**: {product.get("category_path") or "未知"}
-- **品牌关键词**: {", ".join(brand_keywords[:10]) if brand_keywords else "无"}
+    # 解析 rating
+    rating_str = product.get("rating") or "0"
+    if isinstance(rating_str, str):
+        rating_match = re.search(r"(\d+\.?\d*)", rating_str)
+        rating = float(rating_match.group(1)) if rating_match else 0.0
+    else:
+        rating = float(rating_str) if rating_str else 0.0
 
-### 产品卖点
-{product.get("bullet_points", "暂无") or "暂无"}
-"""
+    # 解析 review_count
+    review_count_str = product.get("review_count") or "0"
+    if isinstance(review_count_str, str):
+        review_count_match = re.search(r"(\d+)", review_count_str)
+        review_count = int(review_count_match.group(1)) if review_count_match else 0
+    else:
+        review_count = int(review_count_str) if review_count_str else 0
 
-    # 读取技能文件
-    skill_path = r"D:\workspace\claws\google-ads-skill\SKILL-Google-Ads.md"
-    if not os.path.exists(skill_path):
-        raise FileNotFoundError(f"技能文件不存在: {skill_path}")
+    category = product.get("category_path") or ""
+    bullet_points = product.get("bullet_points") or ""
 
-    with open(skill_path, "r", encoding="utf-8") as f:
-        skill_content = f.read()
+    # 精简 bullet_points（只取前 500 字符）
+    if isinstance(bullet_points, str) and len(bullet_points) > 500:
+        bullet_points = bullet_points[:500] + "..."
 
-    # 读取参考文件
-    refs_dir = r"D:\workspace\claws\google-ads-skill\references"
-    ref_files = [
-        "product-category-analyzer.md",
-        "keyword-engine.md",
-        "negative-keywords.md",
-        "copy-generator.md",
-        "qa-checker.md",
-    ]
-    refs_content = ""
-    for ref_file in ref_files:
-        ref_path = os.path.join(refs_dir, ref_file)
-        if os.path.exists(ref_path):
-            with open(ref_path, "r", encoding="utf-8") as f:
-                refs_content += f"\n\n---\n\n## {ref_file}\n\n{f.read()}"
+    # 构建精简的 prompt
+    prompt = f"""# Task: Generate Google Ads Plan for Amazon Affiliate Product
 
-    # 构建 prompt
-    prompt = f"""
-# 任务：为以下产品生成 Google Ads 广告方案
+## Product Info
+- ASIN: {asin}
+- Title: {title}
+- Brand: {brand}
+- Price: ${price:.2f}
+- Commission: {commission_str} (${price * commission_rate:.2f} per sale)
+- Rating: {rating}/5 ({review_count} reviews)
+- Category: {category}
+- Brand Keywords: {", ".join(brand_keywords[:5]) if brand_keywords else "N/A"}
 
-请严格按照 SKILL-Google-Ads.md 技能文件中的 10 步工作流程执行。
+## Key Features
+{bullet_points[:300] if bullet_points else "N/A"}
 
-{product_info}
+## Requirements
+Generate a complete Google Ads plan in JSON format with:
 
----
+1. **product_analysis**: {{category, type, target_cpa, recommended_campaigns}}
+2. **profitability**: {{break_even_cpa, feasibility}}
+3. **campaigns**: Array of campaigns, each with:
+   - name: Campaign name (English)
+   - budget_daily: Daily budget in USD
+   - bid_strategy: "Manual CPC" or "Maximize Clicks"
+   - ad_groups: Array of ad groups, each with:
+     - name: Ad group name
+     - keywords: Array of {{"kw": "keyword", "match": "E|P|B"}}
+     - negative_keywords: Array of negative keywords
+     - headlines: Array of {{"text": "headline (max 30 chars)", "chars": count}}
+     - descriptions: Array of {{"text": "description (max 90 chars)", "chars": count}}
 
-# 技能文件内容
+## Rules
+- Create 2-3 campaigns: Brand Protection, Core Scenarios, Competitor (optional)
+- Keywords must be realistic search terms
+- Headlines max 30 chars, Descriptions max 90 chars
+- Include specific product info in ad copy (rating, features, price)
+- Add negative keywords to filter irrelevant traffic
 
-{skill_content[:8000]}
-
----
-
-# 输出要求
-
-请以 JSON 格式输出完整的广告方案，包含：
-- product_analysis: 产品分析
-- profitability: 盈利评估
-- campaigns: 广告系列列表（每个包含 name, budget_daily, bid_strategy, ad_groups）
-- account_negative_keywords: 账户级否定词
-- sitelinks: 站点链接
-- callouts: 宣传语
-- qa_report: QA 检查报告
-"""
+Output ONLY valid JSON, no markdown code blocks."""
 
     # 调用 AI
     from kimi_client import KimiClient
 
     client = KimiClient(model="kimi-k2.5", api_key=KIMI_API_KEY)
 
-    # KimiClient.chat() 期望字符串参数，不是消息列表
+    # 设置较短的超时
     result_text = client.chat(prompt, stream=False)
 
     # 解析 JSON
@@ -3948,12 +4085,12 @@ def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
     # 添加元数据
     json_result["metadata"] = {
         "asin": asin,
-        "brand": product.get("brand"),
-        "product_name": product.get("amz_title") or product.get("product_name"),
-        "price": float(product.get("price") or 0),
-        "commission_rate": product.get("commission", "0%"),
-        "rating": product.get("rating"),
-        "review_count": product.get("review_count"),
+        "brand": brand,
+        "product_name": title,
+        "price": price,
+        "commission_rate": commission_str,
+        "rating": rating,
+        "review_count": review_count,
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "skill_version": "Google Ads 5.0",
         "generation_method": "AI",
