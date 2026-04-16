@@ -28,6 +28,7 @@ CHROME_WS = "http://127.0.0.1:9222"
 CHROME_DEBUG_PORT = 9222
 CHROME_USER_DATA_DIR = r"C:\Chrome_Debug"
 WAIMAOXIA_LOGIN_URL = "https://www.waimaoxia.net/login"
+WAIMAOXIA_DASHBOARD_URL = "https://www.waimaoxia.net/dashboard"
 WMXPRO_URL = "https://zh.trends.fast.wmxpro.com/analytics/overview/?searchType=domain"
 OUTPUT_DIR = Path("temp")
 
@@ -1121,7 +1122,7 @@ class WaimaoxiaSemrushCollector:
             return None
 
     def open_login_page(self):
-        """打开外贸侠登录页"""
+        """打开外贸侠登录页，登录成功后导航到个人中心"""
         # 如果已经在 SEMrush 概览页且有查询参数，跳过登录检查
         current_url = self.page.url
         if (
@@ -1142,6 +1143,15 @@ class WaimaoxiaSemrushCollector:
         status = self.check_login_status()
         if status is True:
             print("✅ 检测到已登录状态")
+
+            # 重要：登录成功后，先导航到个人中心（dashboard）
+            # 这样才能正常进入 SEMrush 工具，否则会提示"登录已过期"
+            print("📍 导航到个人中心...")
+            self.page.goto(
+                WAIMAOXIA_DASHBOARD_URL, wait_until="domcontentloaded", timeout=30000
+            )
+            time.sleep(3)
+            print(f"✅ 已到达个人中心: {self.page.url}")
             return True
 
         print("⏳ 等待用户手动登录...")
@@ -1154,14 +1164,37 @@ class WaimaoxiaSemrushCollector:
             status = self.check_login_status()
             if status is True:
                 print(f"✅ 检测到登录成功！({i + 1}秒)")
+
+                # 登录成功后，导航到个人中心
+                print("📍 导航到个人中心...")
+                self.page.goto(
+                    WAIMAOXIA_DASHBOARD_URL,
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
+                time.sleep(3)
+                print(f"✅ 已到达个人中心: {self.page.url}")
                 return True
+
             if (i + 1) % 10 == 0:
                 current_url = self.page.url
                 print(f"   已等待 {i + 1} 秒... 当前URL: {current_url}")
-                # URL已离开登录页，直接继续
+                # URL已离开登录页，检查是否登录成功
                 if "/login" not in current_url:
-                    print(f"   ⚠️ URL已离开登录页，尝试直接继续...")
-                    return True
+                    # 再次检查登录状态
+                    status = self.check_login_status()
+                    if status is True:
+                        print(f"✅ 检测到登录成功！({i + 1}秒)")
+                        # 导航到个人中心
+                        print("📍 导航到个人中心...")
+                        self.page.goto(
+                            WAIMAOXIA_DASHBOARD_URL,
+                            wait_until="domcontentloaded",
+                            timeout=30000,
+                        )
+                        time.sleep(3)
+                        print(f"✅ 已到达个人中心: {self.page.url}")
+                        return True
 
         print("❌ 等待登录超时")
         return False
