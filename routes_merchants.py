@@ -626,6 +626,9 @@ def api_merchant_products():
     q = request.args.get("q", "").strip()
     page = max(1, int(request.args.get("page", 1)))
     size = min(200, max(10, int(request.args.get("size", 50))))
+
+    print(f"[DEBUG] api_merchant_products: mid={mid}, q={q}, page={page}, size={size}")
+
     if not mid:
         return jsonify({"error": "merchant_id required"}), 400
     try:
@@ -644,6 +647,10 @@ def api_merchant_products():
         if q:
             base_where += " AND (p.product_name LIKE %s OR p.asin LIKE %s)"
             params.extend([f"%{q}%", f"%{q}%"])
+
+        print(f"[DEBUG] base_where: {base_where}")
+        print(f"[DEBUG] params: {params}")
+
         cur.execute(
             f"""SELECT SQL_CALC_FOUND_ROWS p.id, p.asin, p.product_name, p.price, p.commission,
                                p.tracking_url, p.amazon_url, p.scraped_at,
