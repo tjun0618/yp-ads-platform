@@ -4301,8 +4301,10 @@ def api_workflow_amazon(merchant_id):
     - asin: 商品 ASIN（必填）
     - force: 如果为 true，强制重新采集
 
-    如果数据库中已有完整数据且不是强制采集，直接返回
-    否则触发采集
+    返回：
+    - 如果有数据：返回 data 和 has_data: true
+    - 如果没有数据且不是强制采集：返回 has_data: false
+    - 如果触发采集：返回 collecting: true
     """
     try:
         data = request.get_json(silent=True) or {}
@@ -4335,28 +4337,26 @@ def api_workflow_amazon(merchant_id):
             (selected_asin,),
         )
         product = cur.fetchone()
+        conn.close()
 
         if not product:
-            conn.close()
             return jsonify({"success": False, "error": f"找不到商品 {selected_asin}"})
 
         # 检查是否有完整的亚马逊数据
         has_amazon_data = product.get("amz_title") and product.get("bullet_points")
 
-        # 如果有完整数据且不是强制重新采集，直接返回
+        # 如果有完整数据且不是强制重新采集，返回数据（让前端决定是否重新采集）
         if has_amazon_data and not force_recollect:
-            conn.close()
             return jsonify(
                 {
                     "success": True,
+                    "has_data": True,
                     "data": product,
                     "summary": f"商品: {product.get('amz_title') or product.get('product_name', '')[:50]}",
                 }
             )
 
-        # 没有完整数据或强制重新采集，触发采集
-        conn.close()
-
+        # 没有数据或强制重新采集，触发采集
         # 创建启动脚本
         bat_file = BASE_DIR / f"_launch_amazon_{selected_asin}.bat"
         bat_content = (
@@ -4390,6 +4390,7 @@ def api_workflow_amazon(merchant_id):
             {
                 "success": True,
                 "collecting": True,
+                "has_data": False,
                 "message": f"Amazon 采集已启动 (ASIN: {selected_asin})",
                 "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
             }
