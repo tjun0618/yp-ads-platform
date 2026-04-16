@@ -8,22 +8,9 @@ Set FSO      = CreateObject("Scripting.FileSystemObject")
 
 ProjectDir = FSO.GetParentFolderName(WScript.ScriptFullName)
 
-' 关闭端口 5055 的进程
+' 关闭所有 Python 进程
 On Error Resume Next
-Set oExec = WshShell.Exec("netstat -ano | findstr :5055 | findstr LISTENING")
-Do While oExec.Status = 0
-    WScript.Sleep 100
-Loop
-sOut = oExec.StdOut.ReadAll
-If Len(sOut) > 0 Then
-    arr = Split(Trim(sOut))
-    If UBound(arr) >= 4 Then
-        PID = arr(UBound(arr))
-        If IsNumeric(PID) Then
-            WshShell.Run "taskkill /F /PID " & PID, 0, True
-        End If
-    End If
-End If
+WshShell.Run "taskkill /F /IM python.exe", 0, True
 On Error GoTo 0
 
 ' 删除 Python 缓存目录（确保加载最新代码）
