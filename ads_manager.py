@@ -76,6 +76,24 @@ def server_status():
     )
 
 
+@app.route("/api/server/start", methods=["POST"])
+def server_start():
+    """
+    服务器启动端点
+
+    如果服务正在运行，返回成功。
+    如果服务未运行，此端点无法访问。
+    """
+    return jsonify(
+        {
+            "ok": True,
+            "status": "running",
+            "message": "Service is already running",
+            "port": int(os.environ.get("ADS_PORT", 5055)),
+        }
+    )
+
+
 # ─── 全局错误处理器 ─────────────────────────────────────────────────────────
 @app.errorhandler(404)
 def not_found(error):

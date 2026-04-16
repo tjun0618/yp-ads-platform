@@ -247,9 +247,11 @@
     <div class="icon-big">ROCKET</div>
     <h3>Start the service</h3>
     <p>
-      Double-click the startup script in the folder:<br>
+      <strong>Option 1:</strong> Double-click the startup script:<br>
       <code>launch.bat</code><br><br>
-      Or run in terminal:<br>
+      <strong>Option 2:</strong> Double-click the launcher app:<br>
+      <code>launcher.hta</code><br><br>
+      <strong>Option 3:</strong> Run in terminal:<br>
       <span class="cmd">python -X utf8 ads_manager.py</span>
     </p>
     <div>
@@ -332,7 +334,39 @@ function checkStatus() {
 }
 
 function startServer() {
-  log('Opening start guide...', 'info');
+  log('Attempting to start service...', 'info');
+  
+  // 尝试通过 API 启动（如果服务已在运行）
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', BASE + '/api/server/start', true);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.timeout = 3000;
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      log('Service started via API', 'ok');
+      setTimeout(checkStatus, 2000);
+    } else {
+      showStartModal();
+    }
+  };
+  xhr.onerror = function() {
+    // 服务未运行，显示启动指南
+    log('Service not running, showing start guide...', 'warn');
+    showStartModal();
+  };
+  xhr.ontimeout = function() {
+    log('Request timeout, showing start guide...', 'warn');
+    showStartModal();
+  };
+  
+  try {
+    xhr.send('{}');
+  } catch(e) {
+    showStartModal();
+  }
+}
+
+function showStartModal() {
   document.getElementById('startModal').style.display = '';
 }
 

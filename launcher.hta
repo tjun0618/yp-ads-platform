@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>YP Affiliate Launcher</title>
+<HTA:APPLICATION
+  APPLICATIONNAME="YP Affiliate Launcher"
+  ID="YPLauncher"
+  VERSION="1.0"
+  BORDER="thin"
+  BORDERSTYLE="normal"
+  CAPTION="yes"
+  ICON=""
+  MAXIMIZEBUTTON="no"
+  MINIMIZEBUTTON="no"
+  SHOWINTASKBAR="yes"
+  SINGLEINSTANCE="yes"
+  SYSMENU="yes"
+  WINDOWSTATE="normal"
+/>
+<style>
+body {
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 40px;
+  text-align: center;
+}
+h1 { color: #58a6ff; margin-bottom: 20px; }
+.btn {
+  padding: 15px 40px;
+  font-size: 16px;
+  background: #238636;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  margin: 10px;
+}
+.btn:hover { background: #2ea043; }
+.btn-secondary { background: #21262d; border: 1px solid #30363d; }
+.btn-secondary:hover { background: #30363d; }
+.status { margin-top: 20px; font-size: 14px; color: #8b949e; }
+</style>
+</head>
+<body>
+<h1>YP Affiliate Launcher</h1>
+<p>Click the button below to start the service</p>
+<button class="btn" onclick="startService()">Start Service</button>
+<button class="btn btn-secondary" onclick="openBrowser()">Open Browser</button>
+<div class="status" id="status"></div>
+
+<script>
+function startService() {
+  var shell = new ActiveXObject("WScript.Shell");
+  var fso = new ActiveXObject("Scripting.FileSystemObject");
+  var scriptPath = fso.GetParentFolderName(location.pathname.replace(/^\/+/,''));
+  
+  shell.CurrentDirectory = scriptPath;
+  shell.Run('cmd /c start "" python -X utf8 ads_manager.py', 1, false);
+  
+  document.getElementById('status').innerHTML = 'Service starting... Please wait a few seconds and click "Open Browser"';
+}
+
+function openBrowser() {
+  var shell = new ActiveXObject("WScript.Shell");
+  shell.Run('http://localhost:5055');
+}
+</script>
+</body>
+</html>
