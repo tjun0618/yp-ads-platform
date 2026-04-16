@@ -85,74 +85,15 @@ def _write_progress(
         pass
 
 
-# ─── 一次性初始化：切换配送地址到中国 + 设置语言为英语 ──────────────────────
+# ─── 一次性初始化：设置语言为英语 ──────────────────────
 def setup_language_and_address(page):
     """
-    启动时执行一次：
-      1. 切换配送地址到中国（CN）
-      2. 访问语言偏好设置页，确认 en_US 已选中，点击 Save Changes
+    启动时执行一次：检测语言，如果不是英语则设置为 en_US
     之后每个商品页面无需追加 ?language=en_US 参数。
     """
 
-    # ── 步骤1：切换配送地址到中国 ────────────────────────────────────
-    print("[setup] 步骤1：切换配送地址到中国...")
-    try:
-        page.goto(
-            "https://www.amazon.com/",
-            wait_until="domcontentloaded",
-            timeout=PAGE_TIMEOUT,
-        )
-        time.sleep(2)
-
-        # 点击配送地址选择器
-        for sel in ["#nav-global-location-popover-link", "#glow-ingress-block"]:
-            try:
-                page.locator(sel).first.click(timeout=4000)
-                time.sleep(1.5)
-                break
-            except Exception:
-                pass
-
-        # 等待弹窗，选择国家下拉
-        try:
-            page.wait_for_selector(
-                "#GLUXCountryList, #GLUXZipUpdateInput", timeout=5000
-            )
-            country_sel = page.query_selector("#GLUXCountryList")
-            if country_sel:
-                page.select_option("#GLUXCountryList", value="CN")
-                time.sleep(1)
-                # 点击确认
-                for btn_sel in [
-                    "#GLUXLocationUpdateButton .a-button-input",
-                    ".a-popover-footer .a-button-primary input",
-                    ".a-popover-footer .a-button-primary",
-                    "#GLUXConfirmClose",
-                ]:
-                    try:
-                        page.locator(btn_sel).first.click(timeout=2000)
-                        time.sleep(2)
-                        break
-                    except Exception:
-                        pass
-                # 读取当前地址确认
-                for sel2 in ["#glow-ingress-line2"]:
-                    try:
-                        txt = page.locator(sel2).first.text_content(timeout=2000)
-                        if txt and txt.strip():
-                            print(f"[setup] 配送地址已切换: {txt.strip()}")
-                    except Exception:
-                        pass
-            else:
-                print("[setup] 未找到 #GLUXCountryList，跳过地址切换")
-        except Exception as e:
-            print(f"[setup] 地址弹窗未出现，跳过: {e}")
-
-    except Exception as e:
-        print(f"[setup] 步骤1 失败（继续）: {e}")
-
-    # ── 步骤2：通过语言偏好页面将语言设置为英语 ──────────────────────
-    print("[setup] 步骤2：通过语言偏好页设置英语（en_US）...")
+    # ── 检测并设置语言为英语 ────────────────────────────────────
+    print("[setup] 检测语言设置...")
     PREF_URL = (
         "https://www.amazon.com/customer-preferences/edit"
         "?ie=UTF8&preferencesReturnUrl=%2F&ref_=topnav_lang_ais"
@@ -173,10 +114,13 @@ def setup_language_and_address(page):
 
         if en_radio_checked is None:
             print("[setup] 未找到 en_US 单选按钮，跳过语言设置")
+            return
         elif en_radio_checked:
-            print("[setup] 语言已是英语（en_US），直接点击 Save 确认...")
+            print("[setup] 语言已是英语（en_US），无需设置")
+            return
         else:
             # 选中英语
+            print("[setup] 语言不是英语，正在设置为 en_US...")
             page.evaluate("""
                 () => {
                     for (const radio of document.querySelectorAll('input[type="radio"]')) {
@@ -197,13 +141,13 @@ def setup_language_and_address(page):
             try:
                 page.locator(save_sel).first.click(timeout=3000)
                 time.sleep(3)
-                print(f"[setup] Save Changes 成功，当前 URL: {page.url}")
+                print(f"[setup] Save Changes 成功")
                 break
             except Exception:
                 pass
 
     except Exception as e:
-        print(f"[setup] 步骤2 失败（继续）: {e}")
+        print(f"[setup] 语言设置失败（继续）: {e}")
 
     print("[setup] 初始化完成，开始采集商品...\n")
 
