@@ -5245,7 +5245,15 @@ class WaimaoxiaSemrushCollector:
             self._setup_api_interceptor()
             print("✅ 创建新页面（已启用API拦截器）")
 
-            # 3. 直接访问 SEMrush 概览页（带查询参数）
+            # 3. 先打开外贸侠登录页，检查登录状态
+            if not self.open_login_page():
+                return {"success": False, "error": "外贸侠登录失败或超时"}
+
+            # 4. 导航到 SEMrush 高级版（如果需要）
+            if not self.navigate_to_semrush():
+                return {"success": False, "error": "无法导航到 SEMrush 高级版"}
+
+            # 5. 访问 SEMrush 概览页（带查询参数）
             url = f"{WMXPRO_URL}&q={domain}"
             print(f"\n🌐 访问 SEMrush 概览页...")
             print(f"   URL: {url}")
