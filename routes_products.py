@@ -3829,9 +3829,9 @@ def api_workflow_semrush(merchant_id):
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
-        # 1. 检查数据库
+        # 1. 检查数据库 (semrush_competitor_data 表)
         cur.execute(
-            "SELECT id, domain, organic_keywords, paid_keywords, organic_traffic, paid_traffic, authority_score FROM semrush_data WHERE merchant_id = %s LIMIT 1",
+            "SELECT id, domain, organic_keywords_count, paid_keywords_count, organic_traffic, paid_traffic, authority_score FROM semrush_competitor_data WHERE merchant_id = %s LIMIT 1",
             (merchant_id,),
         )
         semrush = cur.fetchone()
@@ -3844,13 +3844,13 @@ def api_workflow_semrush(merchant_id):
                     "data": {
                         "has_data": True,
                         "domain": semrush.get("domain"),
-                        "organic_keywords": semrush.get("organic_keywords", 0),
-                        "paid_keywords": semrush.get("paid_keywords", 0),
+                        "organic_keywords": semrush.get("organic_keywords_count", 0),
+                        "paid_keywords": semrush.get("paid_keywords_count", 0),
                         "organic_traffic": semrush.get("organic_traffic", 0),
                         "paid_traffic": semrush.get("paid_traffic", 0),
                         "authority_score": semrush.get("authority_score", 0),
                     },
-                    "summary": f"SEMrush 数据已存在 (域名: {semrush.get('domain')}, 自然词: {semrush.get('organic_keywords', 0)}, 付费词: {semrush.get('paid_keywords', 0)})",
+                    "summary": f"SEMrush 数据已存在 (域名: {semrush.get('domain')}, 自然词: {semrush.get('organic_keywords_count', 0)}, 付费词: {semrush.get('paid_keywords_count', 0)})",
                 }
             )
 
@@ -3990,7 +3990,8 @@ def api_workflow_semrush(merchant_id):
 
 
 def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
-    """保存 SEMrush 数据到数据库"""
+    """保存 SEMrush 数据到数据库 (semrush_competitor_data 表)"""
+    import json
 
     # 从采集结果中提取数据
     semrush_data = data.get("data", {})
@@ -4004,60 +4005,109 @@ def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
         traffic.get("authority_score", 0) if isinstance(traffic, dict) else 0
     )
 
-    # 关键词数量
+    # 关键词数据
     organic_keywords = semrush_data.get("organic_keywords", {})
-    organic_count = (
-        organic_keywords.get("total", 0) if isinstance(organic_keywords, dict) else 0
-    )
+    if isinstance(organic_keywords, dict):
+        organic_count = organic_keywords.get("total", 0)
+        organic_list = organic_keywords.get("top_keywords", [])
+    else:
+        organic_count = str(len(organic_keywords)) if organic_keywords else 0
+        organic_list = organic_keywords if isinstance(organic_keywords, list) else []
 
     paid_keywords = semrush_data.get("paid_keywords", {})
-    paid_count = paid_keywords.get("total", 0) if isinstance(paid_keywords, dict) else 0
+    if isinstance(paid_keywords, dict):
+        paid_count = paid_keywords.get("total", 0)
+        paid_list = paid_keywords.get("top_keywords", [])
+    else:
+        paid_count = str(len(paid_keywords)) if paid_keywords else 0
+        paid_list = paid_keywords if isinstance(paid_keywords, list) else []
 
-    # 检查是否已存在
-    cur.execute("SELECT id FROM semrush_data WHERE merchant_id = %s", (merchant_id,))
+    # 广告文案
+    ad_copies = semrush_data.get("ad_copies", [])
+
+    # 竞品和引用来源
+    competitors = semrush_data.get("competitors", [])
+    referring_sources = semrush_data.get("referring_sources", [])
+    serp_distribution = semrush_data.get("serp_distribution", {})
+    country_traffic = semrush_data.get("country_traffic", [])
+
+    # 检查是否已存在 (使用 semrush_competitor_data 表)
+    cur.execute(
+        "SELECT id FROM semrush_competitor_data WHERE merchant_id = %s",
+        (merchant_id,),
+    )
     exists = cur.fetchone()
 
     if exists:
         cur.execute(
             """
-            UPDATE semrush_data SET
+            UPDATE semrush_competitor_data SET
                 domain = %s,
-                organic_keywords = %s,
-                paid_keywords = %s,
                 organic_traffic = %s,
                 paid_traffic = %s,
                 authority_score = %s,
-                updated_at = NOW()
+                organic_keywords_count = %s,
+                paid_keywords_count = %s,
+                top_organic_keywords = %s,
+                top_paid_keywords = %s,
+                ad_copies = %s,
+                competitors = %s,
+                referring_sources = %s,
+                serp_distribution = %s,
+                country_traffic = %s,
+                scraped_at = NOW(),
+                status = 'completed'
             WHERE merchant_id = %s
         """,
             (
                 domain,
-                organic_count,
-                paid_count,
-                organic_traffic,
-                paid_traffic,
-                authority_score,
+                str(organic_traffic),
+                str(paid_traffic),
+                str(authority_score),
+                str(organic_count),
+                str(paid_count),
+                json.dumps(organic_list, ensure_ascii=False),
+                json.dumps(paid_list, ensure_ascii=False),
+                json.dumps(ad_copies, ensure_ascii=False),
+                json.dumps(competitors, ensure_ascii=False),
+                json.dumps(referring_sources, ensure_ascii=False),
+                json.dumps(serp_distribution, ensure_ascii=False),
+                json.dumps(country_traffic, ensure_ascii=False),
                 merchant_id,
             ),
         )
     else:
         cur.execute(
             """
-            INSERT INTO semrush_data (merchant_id, domain, organic_keywords, paid_keywords, organic_traffic, paid_traffic, authority_score, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+            INSERT INTO semrush_competitor_data
+            (merchant_id, domain, organic_traffic, paid_traffic, authority_score,
+             organic_keywords_count, paid_keywords_count, top_organic_keywords,
+             top_paid_keywords, ad_copies, competitors, referring_sources,
+             serp_distribution, country_traffic, status, scraped_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'completed', NOW())
         """,
             (
                 merchant_id,
                 domain,
-                organic_count,
-                paid_count,
-                organic_traffic,
-                paid_traffic,
-                authority_score,
+                str(organic_traffic),
+                str(paid_traffic),
+                str(authority_score),
+                str(organic_count),
+                str(paid_count),
+                json.dumps(organic_list, ensure_ascii=False),
+                json.dumps(paid_list, ensure_ascii=False),
+                json.dumps(ad_copies, ensure_ascii=False),
+                json.dumps(competitors, ensure_ascii=False),
+                json.dumps(referring_sources, ensure_ascii=False),
+                json.dumps(serp_distribution, ensure_ascii=False),
+                json.dumps(country_traffic, ensure_ascii=False),
             ),
         )
 
     conn.commit()
+    print(
+        f"[SEMrush] 数据已保存到 semrush_competitor_data 表: merchant_id={merchant_id}"
+    )
 
 
 @bp.route("/api/workflow/products/<merchant_id>", methods=["POST"])
