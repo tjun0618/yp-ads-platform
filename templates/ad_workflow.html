@@ -543,49 +543,49 @@
                     const data = result.data;
                     
                     // 商户信息
-                    if (data.merchant) {
-                        workflowState.merchant = data.merchant.data;
-                        updateNodeStatus('merchant', 'completed', data.merchant.summary);
+                    if (data.merchant && data.merchant.merchant_id) {
+                        workflowState.merchant = data.merchant;
+                        updateNodeStatus('merchant', 'completed', `商户: ${data.merchant.merchant_name}`);
                         log('商户信息: 已存在', 'success');
                     }
                     
                     // 官网
-                    if (data.website && data.website.data.website) {
-                        workflowState.website = data.website.data;
-                        updateNodeStatus('website', 'completed', data.website.summary);
+                    if (data.website && data.website.website) {
+                        workflowState.website = data.website;
+                        updateNodeStatus('website', 'completed', `官网: ${data.website.website}`);
                         log('官网: 已存在', 'success');
                     }
                     
                     // 关键词
-                    if (data.keywords) {
-                        workflowState.keywords = data.keywords.data;
-                        updateNodeStatus('keywords', 'completed', data.keywords.summary);
-                        log(`关键词: 已有 ${data.keywords.data.count} 个`, 'success');
+                    if (data.keywords && data.keywords.keywords) {
+                        workflowState.keywords = data.keywords;
+                        updateNodeStatus('keywords', 'completed', `已获取 ${data.keywords.count} 个关键词`);
+                        log(`关键词: 已有 ${data.keywords.count} 个`, 'success');
                     }
                     
                     // SEMrush
                     if (data.semrush) {
-                        workflowState.semrush = data.semrush.data;
-                        updateNodeStatus('semrush', 'completed', data.semrush.summary);
+                        workflowState.semrush = data.semrush;
+                        updateNodeStatus('semrush', 'completed', 'SEMrush 数据已采集');
                         log('SEMrush数据: 已存在', 'success');
                     }
                     
                     // 商品列表
-                    if (data.products) {
-                        workflowState.products = data.products.data;
-                        updateNodeStatus('products', 'completed', data.products.summary);
-                        log(`商品列表: 已有 ${data.products.data.count} 个商品`, 'success');
+                    if (data.products && data.products.total) {
+                        workflowState.products = data.products;
+                        updateNodeStatus('products', 'completed', `共 ${data.products.total} 个商品`);
+                        log(`商品列表: 已有 ${data.products.total} 个商品`, 'success');
                     }
                     
                     // 亚马逊信息
-                    if (data.amazon) {
-                        workflowState.amazon = data.amazon.data;
-                        updateNodeStatus('amazon', 'completed', data.amazon.summary);
-                        log(`亚马逊信息: 已采集 ${data.amazon.data.with_amazon} 个`, 'success');
+                    if (data.amazon && data.amazon.with_amazon) {
+                        workflowState.amazon = data.amazon;
+                        updateNodeStatus('amazon', 'completed', `已采集 ${data.amazon.with_amazon} 个商品`);
+                        log(`亚马逊信息: 已采集 ${data.amazon.with_amazon} 个`, 'success');
                     }
                     
                     // 统计已完成节点数
-                    const completedCount = Object.keys(data).filter(k => data[k]).length;
+                    const completedCount = Object.keys(workflowState).filter(k => workflowState[k] && k !== 'merchantId').length;
                     if (completedCount > 0) {
                         log(`已加载 ${completedCount} 个已完成的数据`, 'success');
                     }
