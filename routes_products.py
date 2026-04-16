@@ -4297,12 +4297,17 @@ def api_workflow_products(merchant_id):
 def api_workflow_amazon(merchant_id):
     """Step 6: 获取亚马逊商品信息
 
-    如果数据库中已有完整数据，直接返回
-    如果没有或不完整，触发采集
+    参数：
+    - asin: 商品 ASIN（必填）
+    - force: 如果为 true，强制重新采集
+
+    如果数据库中已有完整数据且不是强制采集，直接返回
+    否则触发采集
     """
     try:
         data = request.get_json(silent=True) or {}
         selected_asin = data.get("asin", "").strip()
+        force_recollect = data.get("force", False)
 
         if not selected_asin:
             return jsonify(
@@ -4338,8 +4343,8 @@ def api_workflow_amazon(merchant_id):
         # 检查是否有完整的亚马逊数据
         has_amazon_data = product.get("amz_title") and product.get("bullet_points")
 
-        if has_amazon_data:
-            # 已有完整数据，直接返回
+        # 如果有完整数据且不是强制重新采集，直接返回
+        if has_amazon_data and not force_recollect:
             conn.close()
             return jsonify(
                 {
@@ -4349,7 +4354,7 @@ def api_workflow_amazon(merchant_id):
                 }
             )
 
-        # 没有完整数据，触发采集
+        # 没有完整数据或强制重新采集，触发采集
         conn.close()
 
         # 创建启动脚本

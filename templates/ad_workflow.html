@@ -845,7 +845,7 @@
         // 检查节点是否支持重新采集
         function canRecollectNode(nodeId) {
             // 支持重新采集的节点
-            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products'];
+            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products', 'amazon'];
             return recollectableNodes.includes(nodeId);
         }
         
@@ -888,6 +888,14 @@
         // 强制重新采集
         async function recollectNode(nodeId) {
             closeModal();
+            
+            // 特殊处理：amazon 节点需要先选择商品
+            if (nodeId === 'amazon') {
+                if (!workflowState.selectedAsin) {
+                    log('请先选择商品', 'error');
+                    return;
+                }
+            }
             
             // 清除当前节点的数据
             delete workflowState[nodeId];
@@ -1055,31 +1063,60 @@
             
             const merchantId = workflowState.merchantId;
             
-            log(`开始采集商品 ${asin} 的亚马逊信息...`, 'info');
-            document.getElementById('edit-amazon').style.display = 'none';
-            updateNodeStatus('amazon', 'running');
-            
+            // 先检查是否已有数据
             try {
-                const response = await fetch(`/api/workflow/amazon/${merchantId}`, {
+                const checkResponse = await fetch(`/api/workflow/amazon/${merchantId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ asin: asin })
                 });
-                const result = await response.json();
+                const checkResult = await checkResponse.json();
                 
-                if (result.success) {
-                    if (result.data && result.data.collecting) {
+                if (checkResult.success && checkResult.data && checkResult.data.amz_title) {
+                    // 已有数据，询问是否重新采集
+                    document.getElementById('edit-amazon').style.display = 'none';
+                    
+                    const confirmed = confirm(`该商品已有亚马逊数据：\n${checkResult.data.amz_title}\n\n是否重新采集？`);
+                    if (!confirmed) {
+                        // 用户取消，使用现有数据
+                        workflowState.amazon = checkResult.data;
+                        updateNodeStatus('amazon', 'completed', checkResult.summary);
+                        log(`使用现有数据，已选择商品: ${asin}`, 'info');
+                        return;
+                    }
+                    
+                    // 用户确认重新采集
+                    log(`开始重新采集商品 ${asin} 的亚马逊信息...`, 'info');
+                    updateNodeStatus('amazon', 'running');
+                    
+                    const forceResponse = await fetch(`/api/workflow/amazon/${merchantId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ asin: asin, force: true })
+                    });
+                    const forceResult = await forceResponse.json();
+                    
+                    if (forceResult.success && forceResult.collecting) {
+                        updateNodeStatus('amazon', 'ready');
+                        log(`采集已启动，请在新窗口完成后刷新`, 'info');
+                    } else if (!forceResult.success) {
+                        updateNodeStatus('amazon', 'error');
+                        log(`采集失败: ${forceResult.error}`, 'error');
+                    }
+                } else {
+                    // 没有数据，直接采集
+                    log(`开始采集商品 ${asin} 的亚马逊信息...`, 'info');
+                    document.getElementById('edit-amazon').style.display = 'none';
+                    updateNodeStatus('amazon', 'running');
+                    
+                    if (checkResult.success && checkResult.collecting) {
                         updateNodeStatus('amazon', 'ready');
                         log(`采集已启动，请在新窗口完成后刷新`, 'info');
                         log(`已选择商品: ${asin}`, 'info');
-                    } else {
-                        workflowState.amazon = result.data;
-                        updateNodeStatus('amazon', 'completed', result.summary);
-                        log(`亚马逊信息采集完成，已选择商品: ${asin}`, 'success');
+                    } else if (!checkResult.success) {
+                        updateNodeStatus('amazon', 'error');
+                        log(`采集失败: ${checkResult.error}`, 'error');
                     }
-                } else {
-                    updateNodeStatus('amazon', 'error');
-                    log(`采集失败: ${result.error}`, 'error');
                 }
             } catch (e) {
                 updateNodeStatus('amazon', 'error');
