@@ -847,7 +847,7 @@
         // 检查节点是否支持重新采集
         function canRecollectNode(nodeId) {
             // 支持重新采集的节点
-            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products', 'amazon'];
+            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate'];
             return recollectableNodes.includes(nodeId);
         }
         
@@ -1067,6 +1067,26 @@
             if (!/^[A-Z0-9]{10}$/.test(asin)) {
                 log('ASIN 格式不正确，应为10位字母数字', 'error');
                 return;
+            }
+            
+            // 检查是否换了商品
+            const previousAsin = workflowState.selectedAsin;
+            if (previousAsin && previousAsin !== asin) {
+                log(`切换商品: ${previousAsin} → ${asin}`, 'info');
+                // 清除依赖 ASIN 的节点数据
+                ['report', 'ads', 'evaluate'].forEach(nodeId => {
+                    if (workflowState[nodeId]) {
+                        workflowState[nodeId] = null;
+                        const node = document.getElementById('node-' + nodeId);
+                        const statusEl = document.getElementById('status-' + nodeId);
+                        const dataEl = document.getElementById('data-' + nodeId);
+                        node.classList.remove('completed', 'active', 'error');
+                        statusEl.classList.remove('status-ready', 'status-running', 'status-completed', 'status-error');
+                        statusEl.classList.add('status-pending');
+                        statusEl.textContent = '待执行';
+                        dataEl.innerHTML = '';
+                    }
+                });
             }
             
             // 保存用户选择的ASIN
