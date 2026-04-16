@@ -247,7 +247,11 @@ def scrape_product(page, amazon_url: str, asin: str) -> dict:
                         print(f"  找到跳转元素: {sel} href={href[:60]}")
                         # 如果 href 包含 amazon，直接导航过去
                         if "amazon.com" in href or "amzn.to" in href:
-                            page.goto(href, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                            page.goto(
+                                href,
+                                wait_until="domcontentloaded",
+                                timeout=PAGE_TIMEOUT,
+                            )
                             time.sleep(3)
                             break
                         else:
@@ -281,21 +285,31 @@ def scrape_product(page, amazon_url: str, asin: str) -> dict:
                 # 查找包含 /dp/ 或 /gp/product/ 的 Amazon 链接
                 amazon_links = re.findall(
                     r'https?://[^\s"\'<>]*amazon\.[^\s"\'<>]*/(?:dp|gp/product|product)/[A-Z0-9]{10}',
-                    page_content
+                    page_content,
                 )
                 if amazon_links:
                     direct_url = amazon_links[0]
                     print(f"  提取到 Amazon 链接: {direct_url[:80]}")
-                    page.goto(direct_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                    page.goto(
+                        direct_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT
+                    )
                     time.sleep(3)
                 else:
                     # 用 ASIN 拼接 Amazon 链接
                     print(f"  页面未找到 Amazon 链接，用 ASIN 构造: {asin}")
-                    page.goto(f"https://www.amazon.com/dp/{asin}", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                    page.goto(
+                        f"https://www.amazon.com/dp/{asin}",
+                        wait_until="domcontentloaded",
+                        timeout=PAGE_TIMEOUT,
+                    )
                     time.sleep(3)
             except Exception as e:
                 print(f"  提取链接失败，回退到 ASIN 直连: {e}")
-                page.goto(f"https://www.amazon.com/dp/{asin}", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                page.goto(
+                    f"https://www.amazon.com/dp/{asin}",
+                    wait_until="domcontentloaded",
+                    timeout=PAGE_TIMEOUT,
+                )
                 time.sleep(3)
 
         # 最后一次等待跳转完成
@@ -315,29 +329,40 @@ def scrape_product(page, amazon_url: str, asin: str) -> dict:
     # Step 3b: 检查验证码/登录 — 如果是登录页，尝试提取 return_to 中的实际商品链接
     if "signin" in landed_url.lower():
         # 从 URL 中提取 openid.return_to 参数
-        return_match = re.search(r'openid\.return_to=([^&]+)', landed_url)
+        return_match = re.search(r"openid\.return_to=([^&]+)", landed_url)
         if return_match:
             return_url = return_match.group(1)
             # URL decode
             from urllib.parse import unquote
+
             return_url = unquote(return_url)
             print(f"  登录页 return_to: {return_url[:100]}")
             # 如果 return_to 指向商品页，直接导航过去
             if "/dp/" in return_url or "/gp/product/" in return_url:
                 print(f"  从登录页提取到商品链接，直接导航...")
-                page.goto(return_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                page.goto(
+                    return_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT
+                )
                 time.sleep(3)
                 landed_url = page.url
             else:
                 # return_to 不是商品页，用 ASIN 直连
                 print(f"  return_to 非商品页，用 ASIN 直连: {asin}")
-                page.goto(f"https://www.amazon.com/dp/{asin}", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+                page.goto(
+                    f"https://www.amazon.com/dp/{asin}",
+                    wait_until="domcontentloaded",
+                    timeout=PAGE_TIMEOUT,
+                )
                 time.sleep(3)
                 landed_url = page.url
         else:
             # 登录页没有 return_to，用 ASIN 直连
             print(f"  登录页无 return_to，用 ASIN 直连: {asin}")
-            page.goto(f"https://www.amazon.com/dp/{asin}", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+            page.goto(
+                f"https://www.amazon.com/dp/{asin}",
+                wait_until="domcontentloaded",
+                timeout=PAGE_TIMEOUT,
+            )
             time.sleep(3)
             landed_url = page.url
 
@@ -788,13 +813,25 @@ def main():
     cur = db.cursor(dictionary=True)
 
     if args.asin:
-        # 单个 ASIN 模式：使用传入的 tracking_url 或构造 Amazon URL
+        # 单个 ASIN 模式
         if args.url:
+            # 优先使用传入的 URL
             amazon_url = args.url
-            print(f"[INFO] 使用 tracking_url: {amazon_url[:80]}...")
+            print(f"[INFO] 使用传入的 URL: {amazon_url[:80]}...")
         else:
-            amazon_url = f"https://www.amazon.com/dp/{args.asin}"
-            print(f"[INFO] 构造 Amazon URL: {amazon_url}")
+            # 从数据库查询 tracking_url
+            cur.execute(
+                "SELECT tracking_url FROM yp_us_products WHERE asin = %s LIMIT 1",
+                (args.asin,),
+            )
+            row = cur.fetchone()
+            if row and row.get("tracking_url"):
+                amazon_url = row["tracking_url"]
+                print(f"[INFO] 使用 tracking_url: {amazon_url[:80]}...")
+            else:
+                # 最后才构造默认 URL
+                amazon_url = f"https://www.amazon.com/dp/{args.asin}"
+                print(f"[WARN] 未找到 tracking_url，使用默认 URL: {amazon_url}")
         todo = [{"asin": args.asin, "amazon_url": amazon_url}]
         total = 1
     else:
