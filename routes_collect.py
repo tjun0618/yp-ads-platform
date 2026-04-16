@@ -2170,7 +2170,7 @@ def api_scrape_semrush(merchant_id):
                 "cmd.exe",
                 "/c",
                 "start",
-                f"SEMrush_{name}",
+                "",
                 "cmd.exe",
                 "/k",
                 str(bat_file),
@@ -2932,7 +2932,7 @@ def api_yp_collect_merchant():
     try:
         bat_file.write_text(bat_content, encoding="gbk")
         subprocess.Popen(
-            ["cmd.exe", "/c", "start", f"采集_{name}", "cmd.exe", "/k", str(bat_file)],
+            ["cmd.exe", "/c", "start", "", "cmd.exe", "/k", str(bat_file)],
             cwd=str(BASE_DIR),
             shell=False,
         )
@@ -3046,7 +3046,7 @@ def api_yp_collect_start():
     try:
         bat_file.write_text(bat_content, encoding="gbk")
         subprocess.Popen(
-            ["cmd.exe", "/c", "start", "YP Collect", "cmd.exe", "/k", str(bat_file)],
+            ["cmd.exe", "/c", "start", "", "cmd.exe", "/k", str(bat_file)],
             cwd=str(BASE_DIR),
             shell=False,
         )
@@ -3120,7 +3120,7 @@ def api_yp_collect_by_mid():
                 "cmd.exe",
                 "/c",
                 "start",
-                f"YP采集 {mid_str}",
+                "",
                 "cmd.exe",
                 "/k",
                 str(bat_file),

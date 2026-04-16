@@ -2,14 +2,40 @@
 # 从 ads_manager.py 行 2860-4190 提取
 import json, os, sys, io, csv, uuid, re, time as _time, requests, threading, subprocess, datetime
 from pathlib import Path
-from flask import (Blueprint, render_template_string, jsonify, request,
-                   redirect, url_for, send_file, Response, current_app)
+from flask import (
+    Blueprint,
+    render_template_string,
+    jsonify,
+    request,
+    redirect,
+    url_for,
+    send_file,
+    Response,
+    current_app,
+)
 from urllib.parse import quote
-from app_config import (DB, BASE_DIR, SCRAPER_SCRIPT, OUTPUT_DIR, STOP_FILE,
-                    PROGRESS_FILE, YP_COLLECT_SCRIPT, YP_STOP_FILE, PYTHON_EXE,
-                    YP_SITE_ID, YP_API_TOKEN, YP_OFFER_BY_ADVERT_URL)
+from app_config import (
+    DB,
+    BASE_DIR,
+    SCRAPER_SCRIPT,
+    OUTPUT_DIR,
+    STOP_FILE,
+    PROGRESS_FILE,
+    YP_COLLECT_SCRIPT,
+    YP_STOP_FILE,
+    PYTHON_EXE,
+    YP_SITE_ID,
+    YP_API_TOKEN,
+    YP_OFFER_BY_ADVERT_URL,
+)
 from db import get_db, _db, _cached_count, _count_cache
-from templates_shared import BASE_CSS, NAV_HTML, _BASE_STYLE_DARK, _PAGER_JS_DARK, _SCRAPE_TOPNAV
+from templates_shared import (
+    BASE_CSS,
+    NAV_HTML,
+    _BASE_STYLE_DARK,
+    _PAGER_JS_DARK,
+    _SCRAPE_TOPNAV,
+)
 
 bp = Blueprint("merchants", __name__)
 
@@ -162,7 +188,8 @@ AMAZON_SCRAPE_HTML = r"""
 @bp.route("/amazon_scrape")
 def page_amazon_scrape():
     from flask import Response
-    return Response(AMAZON_SCRAPE_HTML, mimetype='text/html')
+
+    return Response(AMAZON_SCRAPE_HTML, mimetype="text/html")
 
 
 @bp.route("/api/start", methods=["POST"])
@@ -203,7 +230,7 @@ def api_start():
                 "cmd.exe",
                 "/c",
                 "start",
-                "Amazon Scraper",
+                "",
                 "cmd.exe",
                 "/k",
                 str(bat_file),
@@ -320,6 +347,7 @@ def _load_merchants_data():
     result = {"approved": [], "unapplied": [], "summary": {}}
     try:
         import mysql.connector
+
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
@@ -332,11 +360,8 @@ def _load_merchants_data():
         all_merchants = cur.fetchall()
 
         # 查询哪些商户已有商品（即已下载）
-        cur.execute(
-            "SELECT DISTINCT merchant_id FROM yp_products"
-        )
+        cur.execute("SELECT DISTINCT merchant_id FROM yp_products")
         downloaded_mids = set(str(r["merchant_id"]) for r in cur.fetchall())
-
 
         cur.close()
 
@@ -1275,5 +1300,3 @@ setInterval(fetchStatus, 5000);
 </html>
 """
 )
-
-

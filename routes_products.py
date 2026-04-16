@@ -3485,7 +3485,7 @@ def api_workflow_merchant(merchant_id):
                     "cmd.exe",
                     "/c",
                     "start",
-                    f"采集_{merchant_name}",
+                    "",  # 窗口标题（空字符串）
                     "cmd.exe",
                     "/k",
                     str(bat_file),
@@ -4044,7 +4044,7 @@ def api_workflow_semrush(merchant_id):
                 "cmd.exe",
                 "/c",
                 "start",
-                f"SEMrush_{merchant_name}",
+                "",  # 窗口标题（空字符串）
                 "cmd.exe",
                 "/k",
                 str(bat_file),
@@ -4271,7 +4271,7 @@ def api_workflow_products(merchant_id):
                 "cmd.exe",
                 "/c",
                 "start",
-                f"采集_{merchant_name}",
+                "",  # 窗口标题（空字符串）
                 "cmd.exe",
                 "/k",
                 str(bat_file),
@@ -4377,7 +4377,7 @@ def api_workflow_amazon(merchant_id):
                 "cmd.exe",
                 "/c",
                 "start",
-                f"Amazon_{selected_asin}",
+                "",  # 窗口标题（空字符串）
                 "cmd.exe",
                 "/k",
                 str(bat_file),
