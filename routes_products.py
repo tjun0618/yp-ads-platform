@@ -4191,7 +4191,7 @@ def _save_semrush_to_db(merchant_id: str, data: dict, cur, conn):
 @bp.route("/api/workflow/products/<merchant_id>", methods=["POST"])
 def api_workflow_products(merchant_id):
     """Step 5: 获取商品列表
-    
+
     参数：
     - force: 如果为 true，触发重新采集商品
     """
@@ -4199,7 +4199,7 @@ def api_workflow_products(merchant_id):
         # 检查是否强制重新采集
         data = request.get_json(silent=True) or {}
         force_recollect = data.get("force", False)
-        
+
         conn = get_db()
         cur = conn.cursor(dictionary=True)
 
@@ -4234,7 +4234,7 @@ def api_workflow_products(merchant_id):
                     "summary": f"共 {total} 个商品，{with_amazon} 个有亚马逊数据",
                 }
             )
-        
+
         # 获取商户名称
         cur.execute(
             "SELECT merchant_name FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
@@ -4242,12 +4242,12 @@ def api_workflow_products(merchant_id):
         )
         merchant = cur.fetchone()
         conn.close()
-        
+
         merchant_name = merchant["merchant_name"] if merchant else merchant_id
-        
+
         # 如果没有商品或强制重新采集，触发 YP 采集
         from app_config import YP_COLLECT_SCRIPT, PYTHON_EXE
-        
+
         if not YP_COLLECT_SCRIPT.exists():
             return jsonify(
                 {
@@ -4255,7 +4255,7 @@ def api_workflow_products(merchant_id):
                     "error": "download_only.py 脚本不存在",
                 }
             )
-        
+
         # 创建启动脚本
         bat_file = BASE_DIR / f"_launch_yp_single_{merchant_id}.bat"
         bat_content = (
@@ -4264,14 +4264,22 @@ def api_workflow_products(merchant_id):
             f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
         )
         bat_file.write_text(bat_content, encoding="gbk")
-        
+
         # 启动新窗口
         subprocess.Popen(
-            ["cmd.exe", "/c", "start", f"采集_{merchant_name}", "cmd.exe", "/k", str(bat_file)],
+            [
+                "cmd.exe",
+                "/c",
+                "start",
+                f"采集_{merchant_name}",
+                "cmd.exe",
+                "/k",
+                str(bat_file),
+            ],
             cwd=str(BASE_DIR),
             shell=False,
         )
-        
+
         return jsonify(
             {
                 "success": True,
@@ -4287,80 +4295,100 @@ def api_workflow_products(merchant_id):
 
 @bp.route("/api/workflow/amazon/<merchant_id>", methods=["POST"])
 def api_workflow_amazon(merchant_id):
-    """Step 6: 获取亚马逊商品信息"""
+    """Step 6: 获取亚马逊商品信息
+
+    如果数据库中已有完整数据，直接返回
+    如果没有或不完整，触发采集
+    """
     try:
         data = request.get_json(silent=True) or {}
         selected_asin = data.get("asin", "").strip()
 
-        conn = get_db()
-        cur = conn.cursor(dictionary=True)
-
-        if selected_asin:
-            # 获取指定商品
-            cur.execute(
-                """
-                SELECT p.asin, p.product_name, p.tracking_url,
-                       a.title as amz_title, a.brand, a.rating, a.review_count,
-                       a.bullet_points, a.description, a.availability, a.category_path
-                FROM yp_us_products p
-                LEFT JOIN amazon_product_details a ON p.asin = a.asin
-                WHERE p.asin = %s LIMIT 1
-                """,
-                (selected_asin,),
-            )
-            product = cur.fetchone()
-            conn.close()
-
-            if product:
-                return jsonify(
-                    {
-                        "success": True,
-                        "data": product,
-                        "summary": f"商品: {product.get('amz_title') or product.get('product_name', '')[:50]}",
-                    }
-                )
-            else:
-                return jsonify(
-                    {"success": False, "error": f"找不到商品 {selected_asin}"}
-                )
-
-        # 没有指定 ASIN，返回统计
-        cur.execute(
-            """
-            SELECT p.asin, p.product_name, p.tracking_url, a.title as amz_title, a.rating, a.review_count
-            FROM yp_us_products p
-            LEFT JOIN amazon_product_details a ON p.asin = a.asin
-            WHERE p.yp_merchant_id = %s
-            LIMIT 50
-            """,
-            (merchant_id,),
-        )
-        products = cur.fetchall()
-
-        total = len(products)
-        with_amazon = len([p for p in products if p.get("amz_title")])
-
-        conn.close()
-
-        if with_amazon > 0:
-            return jsonify(
-                {
-                    "success": True,
-                    "data": {
-                        "products": products,
-                        "total": total,
-                        "with_amazon": with_amazon,
-                    },
-                    "summary": f"已采集: {with_amazon}/{total}",
-                }
-            )
-        else:
+        if not selected_asin:
             return jsonify(
                 {
                     "success": False,
-                    "error": "暂无亚马逊数据，请选择商品采集",
+                    "error": "请选择商品",
+                    "hint": "请在下拉框中选择要采集的商品",
                 }
             )
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        # 获取指定商品
+        cur.execute(
+            """
+            SELECT p.asin, p.product_name, p.tracking_url,
+                   a.title as amz_title, a.brand, a.rating, a.review_count,
+                   a.bullet_points, a.description, a.availability, a.category_path,
+                   a.top_reviews
+            FROM yp_us_products p
+            LEFT JOIN amazon_product_details a ON p.asin = a.asin
+            WHERE p.asin = %s LIMIT 1
+            """,
+            (selected_asin,),
+        )
+        product = cur.fetchone()
+
+        if not product:
+            conn.close()
+            return jsonify({"success": False, "error": f"找不到商品 {selected_asin}"})
+
+        # 检查是否有完整的亚马逊数据
+        has_amazon_data = product.get("amz_title") and product.get("bullet_points")
+
+        if has_amazon_data:
+            # 已有完整数据，直接返回
+            conn.close()
+            return jsonify(
+                {
+                    "success": True,
+                    "data": product,
+                    "summary": f"商品: {product.get('amz_title') or product.get('product_name', '')[:50]}",
+                }
+            )
+
+        # 没有完整数据，触发采集
+        conn.close()
+
+        # 创建启动脚本
+        bat_file = BASE_DIR / f"_launch_amazon_{selected_asin}.bat"
+        bat_content = (
+            f'@echo off\r\ncd /d "{BASE_DIR}"\r\ntitle Amazon采集 - {selected_asin}\r\n'
+            f"echo ========================================\r\n"
+            f"echo  Amazon 商品详情采集\r\n"
+            f"echo  ASIN: {selected_asin}\r\n"
+            f"echo ========================================\r\n"
+            f"echo.\r\n"
+            f'"{PYTHON_EXE}" -X utf8 "{SCRAPER_SCRIPT}" --asin {selected_asin}\r\n'
+            f"echo.\r\necho 采集结束，按任意键关闭\r\npause > nul\r\n"
+        )
+        bat_file.write_text(bat_content, encoding="gbk")
+
+        # 启动新窗口
+        subprocess.Popen(
+            [
+                "cmd.exe",
+                "/c",
+                "start",
+                f"Amazon_{selected_asin}",
+                "cmd.exe",
+                "/k",
+                str(bat_file),
+            ],
+            cwd=str(BASE_DIR),
+            shell=False,
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "collecting": True,
+                "message": f"Amazon 采集已启动 (ASIN: {selected_asin})",
+                "hint": "请在新窗口中完成采集，完成后再次点击此节点刷新数据",
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
