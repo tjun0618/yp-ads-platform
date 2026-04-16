@@ -148,11 +148,18 @@ def _background_generate_ads(
         price = int(float(product.get("price") or 0))
         commission = (product.get("commission") or "0%").replace("%", "pct")
         filename = f"{brand}-{product_short}-{price}-{commission}.json"
+        filename_txt = f"{brand}-{product_short}-{price}-{commission}.txt"
 
-        # 保存文件
+        # 保存 JSON 文件
         output_path = OUTPUT_DIR / filename
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(ads_plan, f, ensure_ascii=False, indent=2)
+
+        # 保存 TXT 文件（方便复制粘贴）
+        txt_content = _format_ads_plan_as_text(ads_plan)
+        txt_path = OUTPUT_DIR / filename_txt
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(txt_content)
 
         # 更新状态为完成
         with _ads_task_lock:
@@ -160,7 +167,9 @@ def _background_generate_ads(
             _ads_generation_tasks[task_id]["result"] = {
                 "asin": product.get("asin"),
                 "filename": filename,
+                "filename_txt": filename_txt,
                 "download_url": f"/download/{filename}",
+                "download_url_txt": f"/download/{filename_txt}",
                 "campaigns": len(ads_plan.get("campaigns", [])),
                 "ad_groups": sum(
                     len(c.get("ad_groups", [])) for c in ads_plan.get("campaigns", [])
@@ -188,6 +197,165 @@ def _background_generate_ads(
             )
 
         print(f"[Background] Task {task_id} failed: {e}")
+
+
+def _format_ads_plan_as_text(ads_plan: dict) -> str:
+    """
+    将广告方案 JSON 格式化为易读的文本格式，方便复制粘贴
+    """
+    lines = []
+    lines.append("=" * 70)
+    lines.append("GOOGLE ADS ADVERTISING PLAN")
+    lines.append("=" * 70)
+    lines.append("")
+
+    # 元数据
+    metadata = ads_plan.get("metadata", {})
+    if metadata:
+        lines.append(f"Product: {metadata.get('product_name', 'N/A')}")
+        lines.append(f"ASIN: {metadata.get('asin', 'N/A')}")
+        lines.append(f"Brand: {metadata.get('brand', 'N/A')}")
+        lines.append(f"Price: ${metadata.get('price', 0):.2f}")
+        lines.append(f"Commission: {metadata.get('commission_rate', 'N/A')}")
+        lines.append(
+            f"Rating: {metadata.get('rating', 'N/A')}/5 ({metadata.get('review_count', 0)} reviews)"
+        )
+        lines.append(f"Generated: {metadata.get('generated_at', 'N/A')}")
+        lines.append(f"Method: {metadata.get('generation_method', 'N/A')}")
+        lines.append("")
+
+    # 产品分析
+    if "product_analysis" in ads_plan:
+        lines.append("-" * 70)
+        lines.append("PRODUCT ANALYSIS")
+        lines.append("-" * 70)
+        pa = ads_plan["product_analysis"]
+        lines.append(f"Category: {pa.get('category', 'N/A')}")
+        lines.append(f"Type: {pa.get('type', 'N/A')}")
+        lines.append(f"Target CPA: ${pa.get('target_cpa', 0):.2f}")
+        lines.append(f"Recommended Campaigns: {pa.get('recommended_campaigns', 'N/A')}")
+        lines.append("")
+
+    # 盈利评估
+    if "profitability" in ads_plan:
+        lines.append("-" * 70)
+        lines.append("PROFITABILITY ANALYSIS")
+        lines.append("-" * 70)
+        pf = ads_plan["profitability"]
+        lines.append(f"Break-even CPA: ${pf.get('break_even_cpa', 0):.2f}")
+        lines.append(f"Feasibility: {pf.get('feasibility', 'N/A')}")
+        lines.append("")
+
+    # 账户级否定关键词
+    if "account_negative_keywords" in ads_plan:
+        lines.append("-" * 70)
+        lines.append("ACCOUNT-LEVEL NEGATIVE KEYWORDS")
+        lines.append("-" * 70)
+        for kw in ads_plan["account_negative_keywords"]:
+            lines.append(f"  - {kw}")
+        lines.append("")
+
+    # Campaigns
+    campaigns = ads_plan.get("campaigns", [])
+    for i, campaign in enumerate(campaigns, 1):
+        lines.append("=" * 70)
+        lines.append(f"CAMPAIGN {i}: {campaign.get('name', 'Unnamed')}")
+        lines.append("=" * 70)
+        lines.append(f"Daily Budget: ${campaign.get('budget_daily', 0):.2f}")
+        lines.append(f"Bid Strategy: {campaign.get('bid_strategy', 'Manual CPC')}")
+        lines.append("")
+
+        # Campaign-level negative keywords
+        camp_neg = campaign.get("campaign_negative_keywords", [])
+        if camp_neg:
+            lines.append("Campaign Negative Keywords:")
+            for kw in camp_neg:
+                lines.append(f"  - {kw}")
+            lines.append("")
+
+        # Ad Groups
+        ad_groups = campaign.get("ad_groups", [])
+        for j, ag in enumerate(ad_groups, 1):
+            lines.append("-" * 50)
+            lines.append(f"AD GROUP {j}: {ag.get('name', 'Unnamed')}")
+            lines.append("-" * 50)
+
+            # Keywords
+            lines.append("Keywords:")
+            for kw in ag.get("keywords", []):
+                kw_text = kw.get("kw", "") if isinstance(kw, dict) else str(kw)
+                match = kw.get("match", "B") if isinstance(kw, dict) else "B"
+                match_type = {"E": "Exact", "P": "Phrase", "B": "Broad"}.get(
+                    match, "Broad"
+                )
+                lines.append(f"  [{match_type}] {kw_text}")
+            lines.append("")
+
+            # Negative Keywords
+            neg_kws = ag.get("negative_keywords", [])
+            if neg_kws:
+                lines.append("Negative Keywords:")
+                for kw in neg_kws:
+                    lines.append(f"  - {kw}")
+                lines.append("")
+
+            # Headlines
+            lines.append("Headlines (max 30 chars):")
+            for h in ag.get("headlines", []):
+                h_text = h.get("text", "") if isinstance(h, dict) else str(h)
+                chars = (
+                    h.get("chars", len(h_text)) if isinstance(h, dict) else len(h_text)
+                )
+                lines.append(f"  [{chars}c] {h_text}")
+            lines.append("")
+
+            # Descriptions
+            lines.append("Descriptions (max 90 chars):")
+            for d in ag.get("descriptions", []):
+                d_text = d.get("text", "") if isinstance(d, dict) else str(d)
+                chars = (
+                    d.get("chars", len(d_text)) if isinstance(d, dict) else len(d_text)
+                )
+                lines.append(f"  [{chars}c] {d_text}")
+            lines.append("")
+
+    # Ad Extensions
+    if "sitelinks" in ads_plan or "callouts" in ads_plan:
+        lines.append("=" * 70)
+        lines.append("AD EXTENSIONS")
+        lines.append("=" * 70)
+
+        if "sitelinks" in ads_plan:
+            lines.append("Sitelinks:")
+            for sl in ads_plan["sitelinks"]:
+                lines.append(f"  - {sl.get('text', '')}: {sl.get('url', '')}")
+            lines.append("")
+
+        if "callouts" in ads_plan:
+            lines.append("Callouts:")
+            for co in ads_plan["callouts"]:
+                co_text = co.get("text", "") if isinstance(co, dict) else str(co)
+                lines.append(f"  - {co_text}")
+            lines.append("")
+
+    # QA Report
+    if "qa_report" in ads_plan:
+        lines.append("=" * 70)
+        lines.append("QA REPORT")
+        lines.append("=" * 70)
+        qa = ads_plan["qa_report"]
+        for check in qa.get("checks", []):
+            status = "PASS" if check.get("passed") else "FAIL"
+            lines.append(
+                f"  [{status}] {check.get('name', '')}: {check.get('details', '')}"
+            )
+        lines.append("")
+
+    lines.append("=" * 70)
+    lines.append("END OF ADVERTISING PLAN")
+    lines.append("=" * 70)
+
+    return "\n".join(lines)
 
 
 def clean_ad_text(text: str, brand: str = "") -> str:
@@ -4582,11 +4750,15 @@ def api_workflow_ads(merchant_id):
                     )
                 elif task["status"] == "completed":
                     # 已完成，返回结果
+                    result = task["result"]
+                    summary = f"广告方案已生成 ({result.get('method', 'unknown')})<br>"
+                    summary += f"<a href='{result.get('download_url_txt', '')}' download='{result.get('filename_txt', '')}'>📄 下载 TXT (可复制)</a> | "
+                    summary += f"<a href='{result.get('download_url', '')}' download='{result.get('filename', '')}'>📥 下载 JSON</a>"
                     return jsonify(
                         {
                             "success": True,
-                            "data": task["result"],
-                            "summary": f"广告方案已生成 ({task['result']['method']})<br><a href='{task['result']['download_url']}' download='{task['result']['filename']}'>📥 下载 {task['result']['filename']}</a>",
+                            "data": result,
+                            "summary": summary,
                         }
                     )
                 elif task["status"] == "failed":
@@ -4660,9 +4832,10 @@ def api_workflow_ads_status(task_id):
     if status == "completed":
         result = task.get("result", {})
         response["result"] = result
-        response["summary"] = (
-            f"广告方案已生成 ({result.get('method', 'unknown')})<br><a href='{result.get('download_url', '')}' download='{result.get('filename', '')}'>📥 下载 {result.get('filename', '')}</a>"
-        )
+        summary = f"广告方案已生成 ({result.get('method', 'unknown')})<br>"
+        summary += f"<a href='{result.get('download_url_txt', '')}' download='{result.get('filename_txt', '')}'>📄 下载 TXT (可复制)</a> | "
+        summary += f"<a href='{result.get('download_url', '')}' download='{result.get('filename', '')}'>📥 下载 JSON</a>"
+        response["summary"] = summary
         print(f"[Status] Returning completed result: {result.get('filename')}")
     elif status == "failed":
         response["error"] = task.get("error", "未知错误")
