@@ -642,8 +642,8 @@ def api_merchant_products():
         base_where = "WHERE p.merchant_id=%s"
         params = [mid]
         if q:
-            base_where += " AND p.product_name LIKE %s"
-            params.append(f"%{q}%")
+            base_where += " AND (p.product_name LIKE %s OR p.asin LIKE %s)"
+            params.extend([f"%{q}%", f"%{q}%"])
         cur.execute(
             f"""SELECT SQL_CALC_FOUND_ROWS p.id, p.asin, p.product_name, p.price, p.commission,
                                p.tracking_url, p.amazon_url, p.scraped_at,

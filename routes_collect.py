@@ -479,8 +479,28 @@ def api_merchant_room(merchant_id):
                     print(f"[DEBUG] 读取临时文件失败: {e}")
 
         # 5. 最新商品（带 Amazon 数据）- 使用 yp_us_products 表
-        cur.execute(
-            """SELECT p.asin, p.product_name, p.price, p.commission, p.tracking_url,
+        # 支持搜索参数
+        search_q = request.args.get("q", "").strip()
+        if search_q:
+            # 搜索模式：返回所有匹配的商品（不限数量）
+            cur.execute(
+                """SELECT p.asin, p.product_name, p.price, p.commission, p.tracking_url,
+                              d.title as amz_title, d.rating, d.review_count, d.main_image_url,
+                              d.brand, d.price as amz_price, d.bullet_points, d.top_reviews,
+                              d.availability, d.category_path, d.description, d.keywords,
+                              pl.plan_status
+                       FROM yp_us_products p
+                       LEFT JOIN amazon_product_details d ON p.asin=d.asin
+                       LEFT JOIN ads_plans pl ON p.asin=pl.asin
+                       WHERE p.yp_merchant_id=%s AND p.tracking_url IS NOT NULL AND p.tracking_url!=''
+                       AND (p.product_name LIKE %s OR p.asin LIKE %s)
+                       ORDER BY p.id DESC LIMIT 200""",
+                (int(merchant_id), f"%{search_q}%", f"%{search_q}%"),
+            )
+        else:
+            # 默认模式：返回最新的 50 个
+            cur.execute(
+                """SELECT p.asin, p.product_name, p.price, p.commission, p.tracking_url,
                               d.title as amz_title, d.rating, d.review_count, d.main_image_url,
                               d.brand, d.price as amz_price, d.bullet_points, d.top_reviews,
                               d.availability, d.category_path, d.description, d.keywords,
@@ -490,8 +510,8 @@ def api_merchant_room(merchant_id):
                        LEFT JOIN ads_plans pl ON p.asin=pl.asin
                        WHERE p.yp_merchant_id=%s AND p.tracking_url IS NOT NULL AND p.tracking_url!=''
                        ORDER BY p.id DESC LIMIT 50""",
-            (int(merchant_id),),
-        )
+                (int(merchant_id),),
+            )
 
         def _earn(ps, cs):
             try:
@@ -1450,11 +1470,39 @@ function startStatusPolling(merchantId) {
 
 // ── 商品列表 ─────────────────────────────────────────────────────────────────
 function filterProducts() {
-  var q = document.getElementById('prodSearch').value.toLowerCase().trim();
-  filteredProducts = q ? allProducts.filter(function(p) {
-    return p.product_name.toLowerCase().includes(q) || p.asin.toLowerCase().includes(q);
-  }) : allProducts;
-  renderProducts(filteredProducts);
+  var q = document.getElementById('prodSearch').value.trim();
+  
+  // 如果搜索词为空，使用本地过滤
+  if (!q) {
+    filteredProducts = allProducts;
+    renderProducts(filteredProducts);
+    return;
+  }
+  
+  // 如果搜索词长度 >= 2，调用后端 API 搜索
+  if (q.length >= 2) {
+    fetch('/api/merchant_room/' + MID + '?q=' + encodeURIComponent(q))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.products) {
+          filteredProducts = d.products;
+          renderProducts(filteredProducts);
+        }
+      })
+      .catch(function(e) {
+        // 后端搜索失败，使用本地过滤
+        filteredProducts = allProducts.filter(function(p) {
+          return p.product_name.toLowerCase().includes(q.toLowerCase()) || p.asin.toLowerCase().includes(q.toLowerCase());
+        });
+        renderProducts(filteredProducts);
+      });
+  } else {
+    // 搜索词太短，使用本地过滤
+    filteredProducts = allProducts.filter(function(p) {
+      return p.product_name.toLowerCase().includes(q.toLowerCase()) || p.asin.toLowerCase().includes(q.toLowerCase());
+    });
+    renderProducts(filteredProducts);
+  }
 }
 
 function renderProducts(prods) {
