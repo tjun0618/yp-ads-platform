@@ -6240,10 +6240,10 @@ def api_evaluate_ads(asin: str):
             conn.close()
             return jsonify({"success": False, "error": f"找不到商品 {asin}"})
 
-        # 获取广告方案
+        # 获取广告方案（从多个表构建）
         cur.execute(
             """
-            SELECT id, plan_data, generated_at
+            SELECT id, campaign_count, ad_group_count, ad_count, generated_at
             FROM ads_plans
             WHERE asin = %s
             ORDER BY generated_at DESC LIMIT 1
@@ -6259,11 +6259,79 @@ def api_evaluate_ads(asin: str):
             )
 
         plan_id = plan["id"]
-        ads_plan = (
-            json.loads(plan["plan_data"])
-            if isinstance(plan["plan_data"], str)
-            else plan["plan_data"]
+        
+        # 从多个表构建广告方案数据
+        ads_plan = {
+            "campaigns": [],
+            "summary": {
+                "campaign_count": plan["campaign_count"],
+                "ad_group_count": plan["ad_group_count"],
+                "ad_count": plan["ad_count"],
+            }
+        }
+        
+        # 获取 Campaigns
+        cur.execute(
+            """
+            SELECT id, campaign_name, journey_stage, daily_budget_usd, bid_strategy, negative_keywords
+            FROM ads_campaigns
+            WHERE asin = %s
+            ORDER BY id
+        """,
+            (asin,),
         )
+        campaigns = cur.fetchall()
+        
+        for campaign in campaigns:
+            campaign_data = {
+                "name": campaign["campaign_name"],
+                "journey_stage": campaign["journey_stage"],
+                "budget_daily": float(campaign["daily_budget_usd"] or 0),
+                "bid_strategy": campaign["bid_strategy"],
+                "negative_keywords": json.loads(campaign["negative_keywords"]) if campaign["negative_keywords"] else [],
+                "ad_groups": []
+            }
+            
+            # 获取 Ad Groups
+            cur.execute(
+                """
+                SELECT id, ad_group_name, theme, keywords, negative_keywords
+                FROM ads_ad_groups
+                WHERE campaign_id = %s
+                ORDER BY id
+            """,
+                (campaign["id"],),
+            )
+            ad_groups = cur.fetchall()
+            
+            for ag in ad_groups:
+                ad_group_data = {
+                    "name": ag["ad_group_name"],
+                    "theme": ag["theme"],
+                    "keywords": json.loads(ag["keywords"]) if ag["keywords"] else [],
+                    "negative_keywords": json.loads(ag["negative_keywords"]) if ag["negative_keywords"] else [],
+                    "headlines": [],
+                    "descriptions": []
+                }
+                
+                # 获取 Ads
+                cur.execute(
+                    """
+                    SELECT headlines, descriptions
+                    FROM ads_ads
+                    WHERE ad_group_id = %s
+                    ORDER BY id LIMIT 1
+                """,
+                    (ag["id"],),
+                )
+                ad = cur.fetchone()
+                if ad:
+                    ad_group_data["headlines"] = json.loads(ad["headlines"]) if ad["headlines"] else []
+                    ad_group_data["descriptions"] = json.loads(ad["descriptions"]) if ad["descriptions"] else []
+                
+                campaign_data["ad_groups"].append(ad_group_data)
+            
+            ads_plan["campaigns"].append(campaign_data)
 
         # 检查是否已有评估结果
         if not force:
