@@ -740,7 +740,7 @@
         
         // 轮询任务状态
         async function pollTaskStatus(nodeId, taskId) {
-            const maxAttempts = 90;  // 最多轮询 90 次（约 3 分钟）
+            const maxAttempts = 180;  // 最多轮询 180 次（约 6 分钟，AI 生成可能较慢）
             const interval = 2000;  // 每 2 秒轮询一次
             
             for (let i = 0; i < maxAttempts; i++) {

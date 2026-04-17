@@ -100,6 +100,9 @@ def _background_generate_ads(
     print(
         f"[Background] Product: {product.get('asin')} - {product.get('amz_title') or product.get('product_name')}"
     )
+    print(
+        f"[Background] Brand keywords: {brand_keywords[:5] if brand_keywords else 'None'}"
+    )
 
     try:
         # 更新状态为进行中
@@ -3676,29 +3679,63 @@ def api_workflow_merchant(merchant_id):
                     }
                 )
 
-            # 取第一条数据
+            # 取第一条数据，正确映射 YP API 字段
             m = merchants[0]
             merchant_name = m.get("merchant_name", merchant_id)
-            website = m.get("website", "")
+            website = m.get("site_url", "") or m.get("website", "")
             avg_payout = m.get("avg_payout", 0) or 0
-            cookie_days = m.get("cookie_days", 0) or 0
+            payout_unit = m.get("payout_unit", "%")
+            cookie_days = m.get("rd", 0) or m.get("cookie_days", 0) or 0
             country = m.get("country", "US")
+            status = m.get("status", "APPROVED") or "APPROVED"
+            online_status = m.get("merchant_status", "") or m.get("online_status", "")
+            advert_status = m.get("advert_status", 0) or m.get("advert_status", 0)
+            logo = m.get("logo", "")
+            tracking_url = m.get("tracking_url", "")
+            transaction_type = m.get("transaction_type", "")
+            is_deeplink = m.get("is_deeplink", "0")
 
             # 保存到数据库
             conn = get_db()
             cur = conn.cursor()
             cur.execute(
                 """
-                INSERT INTO yp_merchants (merchant_id, merchant_name, website, avg_payout, cookie_days, country)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO yp_merchants 
+                    (merchant_id, merchant_name, website, avg_payout, payout_unit, cookie_days, 
+                     country, status, online_status, advert_status, logo, tracking_url, 
+                     transaction_type, is_deeplink)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE 
                     merchant_name = VALUES(merchant_name),
                     website = VALUES(website),
                     avg_payout = VALUES(avg_payout),
+                    payout_unit = VALUES(payout_unit),
                     cookie_days = VALUES(cookie_days),
-                    country = VALUES(country)
+                    country = VALUES(country),
+                    status = VALUES(status),
+                    online_status = VALUES(online_status),
+                    advert_status = VALUES(advert_status),
+                    logo = VALUES(logo),
+                    tracking_url = VALUES(tracking_url),
+                    transaction_type = VALUES(transaction_type),
+                    is_deeplink = VALUES(is_deeplink)
             """,
-                (merchant_id, merchant_name, website, avg_payout, cookie_days, country),
+                (
+                    merchant_id,
+                    merchant_name,
+                    website,
+                    avg_payout,
+                    payout_unit,
+                    cookie_days,
+                    country,
+                    status,
+                    online_status,
+                    advert_status,
+                    logo,
+                    tracking_url,
+                    transaction_type,
+                    is_deeplink,
+                ),
             )
             conn.commit()
             conn.close()
@@ -3713,6 +3750,8 @@ def api_workflow_merchant(merchant_id):
                         "avg_payout": float(avg_payout),
                         "cookie_days": cookie_days,
                         "country": country,
+                        "status": status,
+                        "online_status": online_status,
                     },
                     "summary": f"商户: {merchant_name}",
                 }

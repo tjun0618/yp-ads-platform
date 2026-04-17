@@ -13,11 +13,19 @@ import time
 import mysql.connector
 
 # ─── 配置 ──────────────────────────────────────────────────────────────────
-DB_CONFIG = dict(host="localhost", port=3306, user="root", password="admin",
-                 database="affiliate_marketing", charset="utf8mb4")
+DB_CONFIG = dict(
+    host="localhost",
+    port=3306,
+    user="root",
+    password="admin",
+    database="affiliate_marketing",
+    charset="utf8mb4",
+)
+
 
 def get_conn():
     return mysql.connector.connect(**DB_CONFIG)
+
 
 # ─── 确保表存在 ────────────────────────────────────────────────────────────
 def ensure_table(cur):
@@ -51,15 +59,21 @@ def ensure_table(cur):
     if idx_count == 0:
         cur.execute("CREATE UNIQUE INDEX idx_usp_asin ON yp_us_products(asin)")
         cur.execute("ALTER TABLE yp_us_products ADD INDEX idx_pid (product_id)")
-        cur.execute("CREATE INDEX idx_usp_commission ON yp_us_products(commission_num DESC)")
-        cur.execute("CREATE INDEX idx_usp_merchant ON yp_us_products(merchant_name(100))")
+        cur.execute(
+            "CREATE INDEX idx_usp_commission ON yp_us_products(commission_num DESC)"
+        )
+        cur.execute(
+            "CREATE INDEX idx_usp_merchant ON yp_us_products(merchant_name(100))"
+        )
 
 
 # ─── 全量重建 ──────────────────────────────────────────────────────────────
 def full_rebuild():
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'")
+    cur.execute(
+        "SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'"
+    )
     cur.execute("SET SESSION group_concat_max_len = 1048576")
 
     print("构建 yp_us_products 物化表（每 ASIN 唯一，取佣金最高商户）...")
@@ -114,7 +128,7 @@ def full_rebuild():
             JOIN (
                 SELECT MIN(id) AS id, merchant_name
                 FROM yp_merchants
-                WHERE country LIKE 'US -%'
+                WHERE (country LIKE 'US -%' OR country LIKE 'US/%' OR country LIKE 'United States%')
                 GROUP BY merchant_name
             ) mu2 ON p2.merchant_name = mu2.merchant_name
             GROUP BY p2.asin
@@ -123,28 +137,30 @@ def full_rebuild():
         JOIN (
             SELECT MIN(id) AS id, merchant_name, merchant_id, website, avg_payout, cookie_days, country
             FROM yp_merchants
-            WHERE country LIKE 'US -%'
+            WHERE (country LIKE 'US -%' OR country LIKE 'US/%' OR country LIKE 'United States%')
             GROUP BY merchant_name
         ) mu ON p.merchant_name = mu.merchant_name
     """)
 
-    print(f"  INSERT 完成: {time.time()-t0:.1f}s  {cur.rowcount} 行")
+    print(f"  INSERT 完成: {time.time() - t0:.1f}s  {cur.rowcount} 行")
 
     t1 = time.time()
     cur.execute("CREATE UNIQUE INDEX idx_usp_asin ON yp_us_products(asin)")
     cur.execute("ALTER TABLE yp_us_products ADD INDEX idx_pid (product_id)")
-    cur.execute("CREATE INDEX idx_usp_commission ON yp_us_products(commission_num DESC)")
+    cur.execute(
+        "CREATE INDEX idx_usp_commission ON yp_us_products(commission_num DESC)"
+    )
     cur.execute("CREATE INDEX idx_usp_merchant ON yp_us_products(merchant_name(100))")
     conn.commit()
-    print(f"  索引创建: {time.time()-t1:.1f}s")
+    print(f"  索引创建: {time.time() - t1:.1f}s")
 
     # 验证
     cur2 = conn.cursor(dictionary=True)
     cur2.execute("SELECT COUNT(*) as c FROM yp_us_products")
-    cnt = cur2.fetchone()['c']
+    cnt = cur2.fetchone()["c"]
     print(f"  总行数（每 ASIN 唯一）: {cnt:,}")
     conn.close()
-    print(f"总耗时: {time.time()-t0:.1f}s")
+    print(f"总耗时: {time.time() - t0:.1f}s")
     print("yp_us_products 缓存表已就绪")
     return cnt
 
@@ -209,7 +225,7 @@ def incremental_refresh():
                    ANY_VALUE(cookie_days) AS cookie_days,
                    ANY_VALUE(country) AS country
             FROM yp_merchants
-            WHERE country LIKE 'US -%'
+            WHERE (country LIKE 'US -%' OR country LIKE 'US/%' OR country LIKE 'United States%')
             GROUP BY merchant_name
         ) mu ON u.merchant_name = mu.merchant_name
         SET u.merchant_db_id = mu.id,
@@ -226,11 +242,13 @@ def incremental_refresh():
     # 统计
     cur2 = conn.cursor(dictionary=True)
     cur2.execute("SELECT COUNT(*) as c FROM yp_us_products")
-    total = cur2.fetchone()['c']
+    total = cur2.fetchone()["c"]
     conn.close()
 
     elapsed = time.time() - t0
-    print(f"[cache refresh] new={new_rows} updated={updated_rows} merchants={merchant_updated} total={total} ({elapsed:.1f}s)")
+    print(
+        f"[cache refresh] new={new_rows} updated={updated_rows} merchants={merchant_updated} total={total} ({elapsed:.1f}s)"
+    )
     return new_rows + updated_rows
 
 

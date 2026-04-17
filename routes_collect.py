@@ -1151,7 +1151,15 @@ function renderSemrush(sem) {
   if (ads.length) {
     document.getElementById('sem-adcopy').innerHTML = ads.map(function(a) {
       var title = typeof a === 'string' ? a : (a.title || a.headline || a.ad_title || '');
-      var desc  = typeof a === 'object' ? (a.description || a.desc || a.body || '') : '';
+      var desc  = '';
+      if (typeof a === 'object') {
+        // descriptions 是数组，取第一个
+        if (a.descriptions && a.descriptions.length) {
+          desc = a.descriptions[0];
+        } else {
+          desc = a.description || a.desc || a.body || '';
+        }
+      }
       if (!title && typeof a === 'object') title = JSON.stringify(a).substring(0,80);
       return '<div class="ad-copy-card">' +
              '<div class="ad-title">' + title + '</div>' +
