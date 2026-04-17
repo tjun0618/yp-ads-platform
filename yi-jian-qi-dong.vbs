@@ -1,24 +1,23 @@
 Option Explicit
 
-Dim WshShell, FSO, ProjectDir, BatFile
+Dim WshShell, FSO, ProjectDir
 
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO      = CreateObject("Scripting.FileSystemObject")
 
 ProjectDir = FSO.GetParentFolderName(WScript.ScriptFullName)
-BatFile    = ProjectDir & "\启动服务.bat"
 
-' 启动批处理文件（新窗口）
+' 切换到项目目录
 WshShell.CurrentDirectory = ProjectDir
-WshShell.Run "cmd.exe /c """ & BatFile & """", 1, False
+
+' 启动服务（新窗口）
+WshShell.Run "cmd.exe /k python -X utf8 ads_manager.py", 1, False
 
 ' 等待服务启动
-WScript.Sleep 10000
+WScript.Sleep 8000
 
 ' 打开浏览器
-On Error Resume Next
 WshShell.Run "http://localhost:5055/launcher"
-On Error GoTo 0
 
 Set WshShell = Nothing
 Set FSO      = Nothing
