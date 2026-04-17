@@ -84,6 +84,10 @@ _ads_task_lock = threading.Lock()
 _collect_tasks = {}  # {task_id: {status, merchant_id, node_type, started_at, completed_at}}
 _collect_task_lock = threading.Lock()
 
+# 改进任务状态存储
+_improvement_tasks = {}  # {task_id: {status, result, error, created_at}}
+_improvement_task_lock = threading.Lock()
+
 
 def _get_task_id(asin: str, merchant_id: str) -> str:
     """生成任务 ID"""
@@ -6639,17 +6643,19 @@ def _parse_improvement_response(response_text: str) -> dict:
     return result
 
 
-@bp.route("/api/improve_ads/<asin>", methods=["POST"])
-def api_improve_ads(asin: str):
-    """
-    根据评估结果改进广告方案
+def _background_improve_ads(task_id: str, asin: str, model: str):
+    """后台线程：改进广告方案"""
+    global _improvement_tasks
 
-    参数：
-    - model: 使用的模型 (kimi/qianfan/deepseek)，默认 kimi
-    """
+    print(f"[Improvement BG] Starting task {task_id} for ASIN {asin}...")
+
     try:
-        data = request.get_json(silent=True) or {}
-        model = data.get("model", "kimi")
+        # 更新状态为进行中
+        with _improvement_task_lock:
+            _improvement_tasks[task_id]["status"] = "improving"
+            _improvement_tasks[task_id]["started_at"] = (
+                datetime.datetime.now().isoformat()
+            )
 
         # 获取产品信息
         conn = get_db()
@@ -6669,7 +6675,7 @@ def api_improve_ads(asin: str):
         product = cur.fetchone()
         if not product:
             conn.close()
-            return jsonify({"success": False, "error": f"找不到商品 {asin}"})
+            raise Exception(f"找不到商品 {asin}")
 
         # 获取广告方案
         cur.execute(
@@ -6683,7 +6689,7 @@ def api_improve_ads(asin: str):
         plan = cur.fetchone()
         if not plan:
             conn.close()
-            return jsonify({"success": False, "error": "没有广告方案"})
+            raise Exception("没有广告方案")
 
         plan_id = plan["id"]
 
@@ -6774,7 +6780,7 @@ def api_improve_ads(asin: str):
         evaluation = cur.fetchone()
         if not evaluation:
             conn.close()
-            return jsonify({"success": False, "error": "请先执行广告评估"})
+            raise Exception("请先执行广告评估")
 
         evaluation_data = {
             "scores": json.loads(evaluation["scores"]) if evaluation["scores"] else {},
@@ -6785,7 +6791,7 @@ def api_improve_ads(asin: str):
         conn.close()
 
         # 调用 AI 改进广告
-        print(f"[Improvement] Improving ads with {model}...")
+        print(f"[Improvement BG] Calling {model} API...")
 
         prompt = _build_improvement_prompt(product, ads_plan, evaluation_data)
 
@@ -6794,9 +6800,7 @@ def api_improve_ads(asin: str):
 
             api_key = os.environ.get("KIMI_API_KEY", "")
             if not api_key:
-                return jsonify(
-                    {"success": False, "error": "请设置环境变量 KIMI_API_KEY"}
-                )
+                raise Exception("请设置环境变量 KIMI_API_KEY")
 
             client = KimiClient(model="kimi-k2.5", api_key=api_key)
             response = client.chat(prompt, stream=False)
@@ -6806,15 +6810,13 @@ def api_improve_ads(asin: str):
 
             bearer_token = os.environ.get("QIANFAN_BEARER_TOKEN", "")
             if not bearer_token:
-                return jsonify(
-                    {"success": False, "error": "请设置环境变量 QIANFAN_BEARER_TOKEN"}
-                )
+                raise Exception("请设置环境变量 QIANFAN_BEARER_TOKEN")
 
             client = QianfanClient(model="ernie-4.0-8k", bearer_token=bearer_token)
             response = client.chat(prompt, stream=False)
 
         else:
-            return jsonify({"success": False, "error": f"不支持的模型: {model}"})
+            raise Exception(f"不支持的模型: {model}")
 
         # 解析改进结果
         improvement = _parse_improvement_response(response)
@@ -6915,12 +6917,79 @@ def api_improve_ads(asin: str):
             conn.commit()
             conn.close()
 
-        return jsonify(
-            {
-                "success": True,
+        # 更新任务状态为完成
+        with _improvement_task_lock:
+            _improvement_tasks[task_id]["status"] = "completed"
+            _improvement_tasks[task_id]["result"] = {
                 "asin": asin,
                 "improvement": improvement,
                 "summary": f"广告已改进，共 {len(improvement.get('changes_made', []))} 项修改",
+            }
+            _improvement_tasks[task_id]["completed_at"] = (
+                datetime.datetime.now().isoformat()
+            )
+
+        print(f"[Improvement BG] Task {task_id} completed!")
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        print(f"[Improvement BG] Task {task_id} failed: {e}")
+
+        with _improvement_task_lock:
+            _improvement_tasks[task_id]["status"] = "failed"
+            _improvement_tasks[task_id]["error"] = str(e)
+            _improvement_tasks[task_id]["completed_at"] = (
+                datetime.datetime.now().isoformat()
+            )
+
+
+@bp.route("/api/improve_ads/<asin>", methods=["POST"])
+def api_improve_ads(asin: str):
+    """
+    根据评估结果改进广告方案（异步）
+
+    参数：
+    - model: 使用的模型 (kimi/qianfan/deepseek)，默认 kimi
+
+    返回：
+    - task_id: 任务 ID，用于轮询查询状态
+    """
+    global _improvement_tasks
+
+    try:
+        data = request.get_json(silent=True) or {}
+        model = data.get("model", "kimi")
+
+        # 生成任务 ID
+        task_id = f"improve_{asin}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        # 初始化任务状态
+        with _improvement_task_lock:
+            _improvement_tasks[task_id] = {
+                "status": "pending",
+                "asin": asin,
+                "model": model,
+                "created_at": datetime.datetime.now().isoformat(),
+            }
+
+        # 启动后台线程
+        thread = threading.Thread(
+            target=_background_improve_ads,
+            args=(task_id, asin, model),
+            daemon=True,
+        )
+        thread.start()
+
+        print(f"[Improvement] Task {task_id} started for ASIN {asin}")
+
+        return jsonify(
+            {
+                "success": True,
+                "task_id": task_id,
+                "status": "pending",
+                "message": "改进任务已启动，请轮询查询结果",
             }
         )
 
@@ -6931,9 +7000,53 @@ def api_improve_ads(asin: str):
         return jsonify({"success": False, "error": str(e)})
 
 
+@bp.route("/api/improve_ads/status/<task_id>", methods=["GET"])
+def api_improve_ads_status(task_id):
+    """
+    查询广告改进任务状态
+
+    返回：
+    - status: pending | improving | completed | failed
+    - result: 改进结果（仅 completed 时）
+    - error: 错误信息（仅 failed 时）
+    """
+    global _improvement_tasks
+
+    with _improvement_task_lock:
+        if task_id not in _improvement_tasks:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "任务不存在",
+                }
+            )
+
+        task = _improvement_tasks[task_id].copy()
+
+    status = task.get("status")
+    print(f"[Improvement Status] Task {task_id} status: {status}")
+
+    response = {
+        "success": True,
+        "task_id": task_id,
+        "status": status,
+    }
+
+    if status == "completed":
+        result = task.get("result", {})
+        response["result"] = result
+        response["summary"] = result.get("summary", "广告已改进")
+    elif status == "failed":
+        response["error"] = task.get("error", "未知错误")
+
+    return jsonify(response)
+
+
 @bp.route("/api/workflow/improve/<merchant_id>", methods=["POST"])
 def api_workflow_improve(merchant_id):
-    """Step 10: 改进广告方案"""
+    """Step 10: 改进广告方案（异步）"""
+    global _improvement_tasks
+
     try:
         data = request.get_json(silent=True) or {}
         selected_asin = data.get("asin", "").strip()
@@ -6948,15 +7061,72 @@ def api_workflow_improve(merchant_id):
                 }
             )
 
-        # 调用改进 API
-        result = api_improve_ads(selected_asin)
+        # 生成任务 ID
+        task_id = f"improve_{selected_asin}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        if isinstance(result, tuple):
-            result = result[0]
+        # 初始化任务状态
+        with _improvement_task_lock:
+            _improvement_tasks[task_id] = {
+                "status": "pending",
+                "asin": selected_asin,
+                "model": model,
+                "merchant_id": merchant_id,
+                "created_at": datetime.datetime.now().isoformat(),
+            }
 
-        result_data = json.loads(result.get_data(as_text=True))
+        # 启动后台线程
+        thread = threading.Thread(
+            target=_background_improve_ads,
+            args=(task_id, selected_asin, model),
+            daemon=True,
+        )
+        thread.start()
 
-        return jsonify(result_data)
+        print(f"[Workflow Improve] Task {task_id} started for ASIN {selected_asin}")
+
+        return jsonify(
+            {
+                "success": True,
+                "async": True,
+                "task_id": task_id,
+                "message": "改进任务已启动，请轮询查询结果",
+            }
+        )
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/workflow/improve/status/<task_id>", methods=["GET"])
+def api_workflow_improve_status(task_id):
+    """查询广告改进任务状态"""
+    global _improvement_tasks
+
+    with _improvement_task_lock:
+        if task_id not in _improvement_tasks:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "任务不存在",
+                }
+            )
+
+        task = _improvement_tasks[task_id].copy()
+
+    status = task.get("status")
+    print(f"[Improve Status] Task {task_id} status: {status}")
+
+    response = {
+        "success": True,
+        "task_id": task_id,
+        "status": status,
+    }
+
+    if status == "completed":
+        result = task.get("result", {})
+        response["result"] = result
+        response["summary"] = result.get("summary", "广告已改进")
+    elif status == "failed":
+        response["error"] = task.get("error", "未知错误")
+
+    return jsonify(response)

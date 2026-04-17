@@ -752,25 +752,33 @@
             const maxAttempts = 180;  // 最多轮询 180 次（约 6 分钟，AI 生成可能较慢）
             const interval = 2000;  // 每 2 秒轮询一次
             
+            // 根据 taskId 前缀选择不同的轮询端点
+            let statusUrl;
+            if (taskId.startsWith('improve_')) {
+                statusUrl = `/api/workflow/improve/status/${taskId}`;
+            } else {
+                statusUrl = `/api/workflow/ads/status/${taskId}`;
+            }
+            
             for (let i = 0; i < maxAttempts; i++) {
                 await new Promise(resolve => setTimeout(resolve, interval));
                 
                 try {
-                    const response = await fetch(`/api/workflow/ads/status/${taskId}`);
+                    const response = await fetch(statusUrl);
                     const result = await response.json();
                     console.log(`[Poll ${i+1}] Status:`, result.status, result);
                     
                     if (result.status === 'completed') {
                         workflowState[nodeId] = result.result;
                         updateNodeStatus(nodeId, 'completed', result.summary);
-                        log(`${getNodeTitle(nodeId)} 完成 (${result.result?.method || 'Rule Engine'})`, 'success');
+                        log(`${getNodeTitle(nodeId)} 完成`, 'success');
                         return;
                     } else if (result.status === 'failed') {
                         updateNodeStatus(nodeId, 'error');
                         log(`${getNodeTitle(nodeId)} 失败: ${result.error}`, 'error');
                         return;
-                    } else if (result.status === 'generating') {
-                        log(`AI 正在生成广告方案... (${i + 1}/${maxAttempts})`, 'info');
+                    } else if (result.status === 'generating' || result.status === 'improving') {
+                        log(`AI 正在处理... (${i + 1}/${maxAttempts})`, 'info');
                     } else if (result.status === 'pending') {
                         log(`任务等待中... (${i + 1}/${maxAttempts})`, 'info');
                     }
