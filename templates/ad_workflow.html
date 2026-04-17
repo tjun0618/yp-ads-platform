@@ -365,6 +365,13 @@
                         <span class="node-status status-pending" id="status-evaluate">待执行</span>
                         <div class="node-data" id="data-evaluate"></div>
                     </div>
+                    <div class="node locked" id="node-improve" onclick="executeNode('improve')">
+                        <div class="node-icon">🔧</div>
+                        <div class="node-title">改进广告文案</div>
+                        <div class="node-desc">根据评估建议优化</div>
+                        <span class="node-status status-pending" id="status-improve">待执行</span>
+                        <div class="node-data" id="data-improve"></div>
+                    </div>
                 </div>
             </div>
             
@@ -428,6 +435,7 @@
             report: null,
             ads: null,
             evaluation: null,
+            improve: null,
             // publish_ads: null,  // 暂时注释
             currentStep: 0
         };
@@ -443,12 +451,13 @@
             amazon: ['products'],
             report: ['products', 'amazon'],  // 只依赖商品和亚马逊信息
             ads: ['report'],
-            evaluate: ['ads']
-            // publish_ads: ['evaluate']  // 暂时注释
+            evaluate: ['ads'],
+            improve: ['evaluate']
+            // publish_ads: ['improve']  // 暂时注释
         };
         
         // 节点执行顺序
-        const nodeOrder = ['merchant', 'website', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate'];
+        const nodeOrder = ['merchant', 'website', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate', 'improve'];
         
         // 日志
         function log(message, type = 'info') {
@@ -788,7 +797,8 @@
                 amazon: '采集亚马逊信息',
                 report: '生成商品报告',
                 ads: '生成广告方案',
-                evaluate: '评估广告质量'
+                evaluate: '评估广告质量',
+                improve: '改进广告文案'
                 // publish_ads: '投放广告'  // 暂时注释
             };
             return titles[nodeId] || nodeId;
@@ -808,7 +818,8 @@
                 amazon: `/api/workflow/amazon/${merchantId}`,
                 report: `/api/workflow/report/${merchantId}`,
                 ads: `/api/workflow/ads/${merchantId}`,
-                evaluate: `/api/workflow/evaluate/${merchantId}`
+                evaluate: `/api/workflow/evaluate/${merchantId}`,
+                improve: `/api/workflow/improve/${merchantId}`
                 // publish_ads: `/api/workflow/publish_ads/${merchantId}`  // 暂时注释
             };
             
@@ -816,7 +827,7 @@
                 const options = { method: 'POST' };
                 
                 // 对于需要ASIN的API，传递selectedAsin
-                if (['report', 'ads', 'evaluate'].includes(nodeId) && workflowState.selectedAsin) {
+                if (['report', 'ads', 'evaluate', 'improve'].includes(nodeId) && workflowState.selectedAsin) {
                     options.headers = { 'Content-Type': 'application/json' };
                     options.body = JSON.stringify({ asin: workflowState.selectedAsin });
                 }
@@ -1000,7 +1011,7 @@
         // 检查节点是否支持重新采集
         function canRecollectNode(nodeId) {
             // 支持重新采集的节点
-            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate'];
+            const recollectableNodes = ['merchant', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate', 'improve'];
             return recollectableNodes.includes(nodeId);
         }
         

@@ -6259,7 +6259,7 @@ def api_evaluate_ads(asin: str):
             )
 
         plan_id = plan["id"]
-        
+
         # 从多个表构建广告方案数据
         ads_plan = {
             "campaigns": [],
@@ -6267,9 +6267,9 @@ def api_evaluate_ads(asin: str):
                 "campaign_count": plan["campaign_count"],
                 "ad_group_count": plan["ad_group_count"],
                 "ad_count": plan["ad_count"],
-            }
+            },
         }
-        
+
         # 获取 Campaigns
         cur.execute(
             """
@@ -6281,17 +6281,19 @@ def api_evaluate_ads(asin: str):
             (asin,),
         )
         campaigns = cur.fetchall()
-        
+
         for campaign in campaigns:
             campaign_data = {
                 "name": campaign["campaign_name"],
                 "journey_stage": campaign["journey_stage"],
                 "budget_daily": float(campaign["daily_budget_usd"] or 0),
                 "bid_strategy": campaign["bid_strategy"],
-                "negative_keywords": json.loads(campaign["negative_keywords"]) if campaign["negative_keywords"] else [],
-                "ad_groups": []
+                "negative_keywords": json.loads(campaign["negative_keywords"])
+                if campaign["negative_keywords"]
+                else [],
+                "ad_groups": [],
             }
-            
+
             # 获取 Ad Groups
             cur.execute(
                 """
@@ -6303,17 +6305,19 @@ def api_evaluate_ads(asin: str):
                 (campaign["id"],),
             )
             ad_groups = cur.fetchall()
-            
+
             for ag in ad_groups:
                 ad_group_data = {
                     "name": ag["ad_group_name"],
                     "theme": ag["theme"],
                     "keywords": json.loads(ag["keywords"]) if ag["keywords"] else [],
-                    "negative_keywords": json.loads(ag["negative_keywords"]) if ag["negative_keywords"] else [],
+                    "negative_keywords": json.loads(ag["negative_keywords"])
+                    if ag["negative_keywords"]
+                    else [],
                     "headlines": [],
-                    "descriptions": []
+                    "descriptions": [],
                 }
-                
+
                 # 获取 Ads
                 cur.execute(
                     """
@@ -6326,11 +6330,15 @@ def api_evaluate_ads(asin: str):
                 )
                 ad = cur.fetchone()
                 if ad:
-                    ad_group_data["headlines"] = json.loads(ad["headlines"]) if ad["headlines"] else []
-                    ad_group_data["descriptions"] = json.loads(ad["descriptions"]) if ad["descriptions"] else []
-                
+                    ad_group_data["headlines"] = (
+                        json.loads(ad["headlines"]) if ad["headlines"] else []
+                    )
+                    ad_group_data["descriptions"] = (
+                        json.loads(ad["descriptions"]) if ad["descriptions"] else []
+                    )
+
                 campaign_data["ad_groups"].append(ad_group_data)
-            
+
             ads_plan["campaigns"].append(campaign_data)
 
         # 检查是否已有评估结果
@@ -6487,6 +6495,468 @@ def api_evaluation_summary(asin: str):
                 "evaluations": evaluations,
             }
         )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 广告改进 API
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _build_improvement_prompt(product: dict, ads_plan: dict, evaluation: dict) -> str:
+    """构建改进广告的 Prompt"""
+
+    product_name = product.get("amz_title") or product.get("product_name", "")
+    brand = product.get("brand", "Unknown")
+    price = product.get("price", "0")
+    rating = product.get("rating", "0")
+    review_count = product.get("review_count", "0")
+
+    # 提取评估建议
+    issues = evaluation.get("issues", [])
+    suggestions = evaluation.get("improvement_suggestions", "")
+    avg_scores = evaluation.get("scores", {})
+
+    # 格式化问题列表
+    issues_text = ""
+    for issue in issues[:5]:
+        issues_text += (
+            f"- [{issue.get('severity', 'medium')}] {issue.get('issue', '')}\n"
+        )
+        if issue.get("suggestion"):
+            issues_text += f"  建议: {issue.get('suggestion')}\n"
+
+    prompt = f"""You are a Google Ads Expert. Please improve the following ad plan based on the evaluation feedback.
+
+## Product Information
+- Product: {product_name}
+- Brand: {brand}
+- Price: ${price}
+- Rating: {rating}/5 ({review_count} reviews)
+
+## Current Ad Plan
+```json
+{json.dumps(ads_plan, indent=2, ensure_ascii=False)[:2000]}
+```
+
+## Evaluation Scores
+- Keyword Relevance: {avg_scores.get("keyword_relevance", 0)}/10
+- Copy Appeal: {avg_scores.get("copy_appeal", 0)}/10
+- Character Compliance: {avg_scores.get("character_compliance", 0)}/10
+- CTA Effectiveness: {avg_scores.get("cta_effectiveness", 0)}/10
+- Policy Compliance: {avg_scores.get("policy_compliance", 0)}/10
+
+## Issues to Fix
+{issues_text}
+
+## General Suggestions
+{suggestions}
+
+## Improvement Requirements
+1. **Fix Policy Violations**: Remove prohibited words like "best", "#1", "guaranteed", "free"
+2. **Add CTAs**: Include clear calls-to-action (Shop Now, Learn More, Get Deal)
+3. **Optimize Character Usage**: Use full 30 chars for headlines, 90 chars for descriptions
+4. **Enhance Copy Appeal**: Add specific benefits, price, ratings, social proof
+5. **Improve Keywords**: Add relevant long-tail keywords, remove broad matches
+6. **Add More Ad Variations**: Minimum 3-5 headlines and 2-3 descriptions per ad group
+
+## Output Format (JSON only)
+{{
+  "improved_campaigns": [
+    {{
+      "name": "Campaign name",
+      "budget_daily": 10.00,
+      "bid_strategy": "Manual CPC",
+      "negative_keywords": ["free", "cheap"],
+      "ad_groups": [
+        {{
+          "name": "Ad group name",
+          "theme": "theme",
+          "keywords": [
+            {{"kw": "keyword", "match": "E"}},
+            {{"kw": "keyword", "match": "P"}}
+          ],
+          "negative_keywords": ["negative"],
+          "headlines": [
+            {{"text": "Headline (max 30 chars)", "chars": 30}},
+            {{"text": "Another headline", "chars": 20}}
+          ],
+          "descriptions": [
+            {{"text": "Description text (max 90 chars)", "chars": 50}},
+            {{"text": "Another description", "chars": 40}}
+          ]
+        }}
+      ]
+    }}
+  ],
+  "changes_made": [
+    "Removed 'best' keyword",
+    "Added 'Shop Now' CTA",
+    "Expanded headline from 16 to 28 characters"
+  ],
+  "expected_improvement": "Expected quality score improvement: 4.7 → 7.5+"
+}}
+
+Generate improved ad copy that addresses all the issues above."""
+
+    return prompt
+
+
+def _parse_improvement_response(response_text: str) -> dict:
+    """解析改进响应"""
+    import re
+
+    result = {
+        "improved_campaigns": [],
+        "changes_made": [],
+        "expected_improvement": "",
+        "raw_response": response_text,
+    }
+
+    try:
+        # 查找 JSON 块
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            json_str = response_text[start:end].strip()
+        elif "{" in response_text:
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            json_str = response_text[start:end]
+        else:
+            json_str = response_text
+
+        parsed = json.loads(json_str)
+        result["improved_campaigns"] = parsed.get("improved_campaigns", [])
+        result["changes_made"] = parsed.get("changes_made", [])
+        result["expected_improvement"] = parsed.get("expected_improvement", "")
+
+    except Exception as e:
+        print(f"[Improvement] Parse error: {e}")
+
+    return result
+
+
+@bp.route("/api/improve_ads/<asin>", methods=["POST"])
+def api_improve_ads(asin: str):
+    """
+    根据评估结果改进广告方案
+
+    参数：
+    - model: 使用的模型 (kimi/qianfan/deepseek)，默认 kimi
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        model = data.get("model", "kimi")
+
+        # 获取产品信息
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            """
+            SELECT p.asin, p.product_name, p.price, p.commission,
+                   a.title as amz_title, a.brand, a.rating, a.review_count
+            FROM yp_us_products p
+            LEFT JOIN amazon_product_details a ON p.asin = a.asin
+            WHERE p.asin = %s LIMIT 1
+        """,
+            (asin,),
+        )
+
+        product = cur.fetchone()
+        if not product:
+            conn.close()
+            return jsonify({"success": False, "error": f"找不到商品 {asin}"})
+
+        # 获取广告方案
+        cur.execute(
+            """
+            SELECT id, campaign_count, ad_group_count, ad_count
+            FROM ads_plans WHERE asin = %s ORDER BY generated_at DESC LIMIT 1
+        """,
+            (asin,),
+        )
+
+        plan = cur.fetchone()
+        if not plan:
+            conn.close()
+            return jsonify({"success": False, "error": "没有广告方案"})
+
+        plan_id = plan["id"]
+
+        # 构建广告方案数据
+        ads_plan = {
+            "campaigns": [],
+            "summary": {
+                "campaign_count": plan["campaign_count"],
+                "ad_group_count": plan["ad_group_count"],
+                "ad_count": plan["ad_count"],
+            },
+        }
+
+        # 获取 Campaigns
+        cur.execute(
+            """
+            SELECT id, campaign_name, journey_stage, daily_budget_usd, bid_strategy, negative_keywords
+            FROM ads_campaigns WHERE asin = %s ORDER BY id
+        """,
+            (asin,),
+        )
+        campaigns = cur.fetchall()
+
+        for campaign in campaigns:
+            campaign_data = {
+                "name": campaign["campaign_name"],
+                "journey_stage": campaign["journey_stage"],
+                "budget_daily": float(campaign["daily_budget_usd"] or 0),
+                "bid_strategy": campaign["bid_strategy"],
+                "negative_keywords": json.loads(campaign["negative_keywords"])
+                if campaign["negative_keywords"]
+                else [],
+                "ad_groups": [],
+            }
+
+            cur.execute(
+                """
+                SELECT id, ad_group_name, theme, keywords, negative_keywords
+                FROM ads_ad_groups WHERE campaign_id = %s ORDER BY id
+            """,
+                (campaign["id"],),
+            )
+            ad_groups = cur.fetchall()
+
+            for ag in ad_groups:
+                ad_group_data = {
+                    "name": ag["ad_group_name"],
+                    "theme": ag["theme"],
+                    "keywords": json.loads(ag["keywords"]) if ag["keywords"] else [],
+                    "negative_keywords": json.loads(ag["negative_keywords"])
+                    if ag["negative_keywords"]
+                    else [],
+                    "headlines": [],
+                    "descriptions": [],
+                }
+
+                cur.execute(
+                    """
+                    SELECT headlines, descriptions FROM ads_ads
+                    WHERE ad_group_id = %s ORDER BY id LIMIT 1
+                """,
+                    (ag["id"],),
+                )
+                ad = cur.fetchone()
+                if ad:
+                    ad_group_data["headlines"] = (
+                        json.loads(ad["headlines"]) if ad["headlines"] else []
+                    )
+                    ad_group_data["descriptions"] = (
+                        json.loads(ad["descriptions"]) if ad["descriptions"] else []
+                    )
+
+                campaign_data["ad_groups"].append(ad_group_data)
+
+            ads_plan["campaigns"].append(campaign_data)
+
+        # 获取评估结果
+        cur.execute(
+            """
+            SELECT scores, issues, improvement_suggestions
+            FROM ads_quality_evaluations
+            WHERE asin = %s AND plan_id = %s
+            ORDER BY evaluated_at DESC LIMIT 1
+        """,
+            (asin, plan_id),
+        )
+
+        evaluation = cur.fetchone()
+        if not evaluation:
+            conn.close()
+            return jsonify({"success": False, "error": "请先执行广告评估"})
+
+        evaluation_data = {
+            "scores": json.loads(evaluation["scores"]) if evaluation["scores"] else {},
+            "issues": json.loads(evaluation["issues"]) if evaluation["issues"] else [],
+            "improvement_suggestions": evaluation["improvement_suggestions"] or "",
+        }
+
+        conn.close()
+
+        # 调用 AI 改进广告
+        print(f"[Improvement] Improving ads with {model}...")
+
+        prompt = _build_improvement_prompt(product, ads_plan, evaluation_data)
+
+        if model == "kimi":
+            from kimi_client import KimiClient
+
+            api_key = os.environ.get("KIMI_API_KEY", "")
+            if not api_key:
+                return jsonify(
+                    {"success": False, "error": "请设置环境变量 KIMI_API_KEY"}
+                )
+
+            client = KimiClient(model="kimi-k2.5", api_key=api_key)
+            response = client.chat(prompt, stream=False)
+
+        elif model == "qianfan":
+            from qianfan_client import QianfanClient
+
+            bearer_token = os.environ.get("QIANFAN_BEARER_TOKEN", "")
+            if not bearer_token:
+                return jsonify(
+                    {"success": False, "error": "请设置环境变量 QIANFAN_BEARER_TOKEN"}
+                )
+
+            client = QianfanClient(model="ernie-4.0-8k", bearer_token=bearer_token)
+            response = client.chat(prompt, stream=False)
+
+        else:
+            return jsonify({"success": False, "error": f"不支持的模型: {model}"})
+
+        # 解析改进结果
+        improvement = _parse_improvement_response(response)
+
+        # 保存改进后的广告方案
+        if improvement["improved_campaigns"]:
+            conn = get_db()
+            cur = conn.cursor()
+
+            # 更新现有广告
+            for i, campaign_data in enumerate(improvement["improved_campaigns"]):
+                # 获取对应的 campaign
+                cur.execute(
+                    """
+                    SELECT id FROM ads_campaigns 
+                    WHERE asin = %s ORDER BY id LIMIT 1 OFFSET %s
+                """,
+                    (asin, i),
+                )
+                campaign_row = cur.fetchone()
+
+                if campaign_row:
+                    campaign_id = campaign_row[0]
+
+                    # 更新 campaign
+                    cur.execute(
+                        """
+                        UPDATE ads_campaigns SET
+                            bid_strategy = %s,
+                            negative_keywords = %s
+                        WHERE id = %s
+                    """,
+                        (
+                            campaign_data.get("bid_strategy", "Manual CPC"),
+                            json.dumps(
+                                campaign_data.get("negative_keywords", []),
+                                ensure_ascii=False,
+                            ),
+                            campaign_id,
+                        ),
+                    )
+
+                    # 更新 ad groups
+                    for j, ag_data in enumerate(campaign_data.get("ad_groups", [])):
+                        cur.execute(
+                            """
+                            SELECT id FROM ads_ad_groups
+                            WHERE campaign_id = %s ORDER BY id LIMIT 1 OFFSET %s
+                        """,
+                            (campaign_id, j),
+                        )
+                        ag_row = cur.fetchone()
+
+                        if ag_row:
+                            ag_id = ag_row[0]
+
+                            # 更新 keywords
+                            keywords = ag_data.get("keywords", [])
+                            cur.execute(
+                                """
+                                UPDATE ads_ad_groups SET
+                                    keywords = %s,
+                                    negative_keywords = %s
+                                WHERE id = %s
+                            """,
+                                (
+                                    json.dumps(keywords, ensure_ascii=False),
+                                    json.dumps(
+                                        ag_data.get("negative_keywords", []),
+                                        ensure_ascii=False,
+                                    ),
+                                    ag_id,
+                                ),
+                            )
+
+                            # 更新 ads
+                            headlines = ag_data.get("headlines", [])
+                            descriptions = ag_data.get("descriptions", [])
+
+                            cur.execute(
+                                """
+                                UPDATE ads_ads SET
+                                    headlines = %s,
+                                    descriptions = %s,
+                                    headline_count = %s,
+                                    description_count = %s
+                                WHERE ad_group_id = %s
+                            """,
+                                (
+                                    json.dumps(headlines, ensure_ascii=False),
+                                    json.dumps(descriptions, ensure_ascii=False),
+                                    len(headlines),
+                                    len(descriptions),
+                                    ag_id,
+                                ),
+                            )
+
+            conn.commit()
+            conn.close()
+
+        return jsonify(
+            {
+                "success": True,
+                "asin": asin,
+                "improvement": improvement,
+                "summary": f"广告已改进，共 {len(improvement.get('changes_made', []))} 项修改",
+            }
+        )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/workflow/improve/<merchant_id>", methods=["POST"])
+def api_workflow_improve(merchant_id):
+    """Step 10: 改进广告方案"""
+    try:
+        data = request.get_json(silent=True) or {}
+        selected_asin = data.get("asin", "").strip()
+        model = data.get("model", "kimi")
+
+        if not selected_asin:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "请先选择商品",
+                    "hint": "在「亚马逊商品信息」步骤选择要改进的商品",
+                }
+            )
+
+        # 调用改进 API
+        result = api_improve_ads(selected_asin)
+
+        if isinstance(result, tuple):
+            result = result[0]
+
+        result_data = json.loads(result.get_data(as_text=True))
+
+        return jsonify(result_data)
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
