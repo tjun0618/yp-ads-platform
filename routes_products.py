@@ -6763,7 +6763,7 @@ def api_improve_ads(asin: str):
         # 获取评估结果
         cur.execute(
             """
-            SELECT scores, issues, improvement_suggestions
+            SELECT scores, issues, suggestions
             FROM ads_quality_evaluations
             WHERE asin = %s AND plan_id = %s
             ORDER BY evaluated_at DESC LIMIT 1
@@ -6779,7 +6779,7 @@ def api_improve_ads(asin: str):
         evaluation_data = {
             "scores": json.loads(evaluation["scores"]) if evaluation["scores"] else {},
             "issues": json.loads(evaluation["issues"]) if evaluation["issues"] else [],
-            "improvement_suggestions": evaluation["improvement_suggestions"] or "",
+            "improvement_suggestions": evaluation["suggestions"] or "",
         }
 
         conn.close()
