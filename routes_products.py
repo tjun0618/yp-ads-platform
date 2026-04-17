@@ -369,6 +369,122 @@ def _format_ads_plan_as_text(ads_plan: dict) -> str:
     return "\n".join(lines)
 
 
+def _format_improved_ads_as_text(asin: str, improvement: dict, product: dict) -> str:
+    """
+    将改进后的广告方案格式化为易读的文本格式，方便复制粘贴到 Google Ads
+    """
+    lines = []
+    lines.append("=" * 70)
+    lines.append("IMPROVED GOOGLE ADS PLAN")
+    lines.append("=" * 70)
+    lines.append("")
+
+    # 产品信息
+    lines.append(
+        f"Product: {product.get('amz_title') or product.get('product_name', 'N/A')}"
+    )
+    lines.append(f"ASIN: {asin}")
+    lines.append(f"Brand: {product.get('brand', 'N/A')}")
+    lines.append(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append("")
+
+    # 改进摘要
+    changes = improvement.get("changes_made", [])
+    if changes:
+        lines.append("-" * 70)
+        lines.append("CHANGES MADE")
+        lines.append("-" * 70)
+        for i, change in enumerate(changes, 1):
+            lines.append(f"{i}. {change}")
+        lines.append("")
+
+    # 预期改进
+    expected = improvement.get("expected_improvement", "")
+    if expected:
+        lines.append("-" * 70)
+        lines.append("EXPECTED IMPROVEMENT")
+        lines.append("-" * 70)
+        lines.append(expected)
+        lines.append("")
+
+    # 改进后的 Campaigns
+    campaigns = improvement.get("improved_campaigns", [])
+    for i, campaign in enumerate(campaigns, 1):
+        lines.append("=" * 70)
+        lines.append(f"CAMPAIGN {i}: {campaign.get('name', 'Unnamed')}")
+        lines.append("=" * 70)
+        lines.append(f"Bid Strategy: {campaign.get('bid_strategy', 'Manual CPC')}")
+        lines.append("")
+
+        # Campaign-level negative keywords
+        camp_neg = campaign.get("negative_keywords", [])
+        if camp_neg:
+            lines.append("Campaign Negative Keywords:")
+            for kw in camp_neg:
+                lines.append(f"  - {kw}")
+            lines.append("")
+
+        # Ad Groups
+        ad_groups = campaign.get("ad_groups", [])
+        for j, ag in enumerate(ad_groups, 1):
+            lines.append("-" * 50)
+            lines.append(f"AD GROUP {j}: {ag.get('name', 'Unnamed')}")
+            if ag.get("theme"):
+                lines.append(f"Theme: {ag.get('theme')}")
+            lines.append("-" * 50)
+
+            # Keywords
+            keywords = ag.get("keywords", [])
+            if keywords:
+                lines.append("Keywords (copy to Google Ads):")
+                for kw in keywords:
+                    kw_text = kw.get("kw", "") if isinstance(kw, dict) else str(kw)
+                    match = kw.get("match", "B") if isinstance(kw, dict) else "B"
+                    match_type = {"E": "Exact", "P": "Phrase", "B": "Broad"}.get(
+                        match, "Broad"
+                    )
+                    lines.append(f"  [{match_type}] {kw_text}")
+                lines.append("")
+
+            # Negative Keywords
+            neg_kws = ag.get("negative_keywords", [])
+            if neg_kws:
+                lines.append("Negative Keywords:")
+                for kw in neg_kws:
+                    lines.append(f"  - {kw}")
+                lines.append("")
+
+            # Headlines
+            headlines = ag.get("headlines", [])
+            if headlines:
+                lines.append("Headlines (max 30 chars, copy to Google Ads):")
+                for h in headlines:
+                    h_text = h.get("text", "") if isinstance(h, dict) else str(h)
+                    chars = len(h_text)
+                    lines.append(f"  [{chars}c] {h_text}")
+                lines.append("")
+
+            # Descriptions
+            descriptions = ag.get("descriptions", [])
+            if descriptions:
+                lines.append("Descriptions (max 90 chars, copy to Google Ads):")
+                for d in descriptions:
+                    d_text = d.get("text", "") if isinstance(d, dict) else str(d)
+                    chars = len(d_text)
+                    lines.append(f"  [{chars}c] {d_text}")
+                lines.append("")
+
+    lines.append("=" * 70)
+    lines.append("END OF IMPROVED ADVERTISING PLAN")
+    lines.append("=" * 70)
+    lines.append("")
+    lines.append(
+        "💡 TIP: Copy the headlines and descriptions above directly into Google Ads"
+    )
+
+    return "\n".join(lines)
+
+
 def clean_ad_text(text: str, brand: str = "") -> str:
     """
     清理广告文本，移除敏感词并确保合规
@@ -6917,6 +7033,15 @@ def _background_improve_ads(task_id: str, asin: str, model: str):
             conn.commit()
             conn.close()
 
+        # 生成txt文档（方便复制粘贴）
+        filename_txt = (
+            f"improved_{asin}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.txt"
+        )
+        txt_content = _format_improved_ads_as_text(asin, improvement, product)
+        txt_path = OUTPUT_DIR / filename_txt
+        with open(txt_path, "w", encoding="utf-8") as f:
+            f.write(txt_content)
+
         # 更新任务状态为完成
         with _improvement_task_lock:
             _improvement_tasks[task_id]["status"] = "completed"
@@ -6924,6 +7049,8 @@ def _background_improve_ads(task_id: str, asin: str, model: str):
                 "asin": asin,
                 "improvement": improvement,
                 "summary": f"广告已改进，共 {len(improvement.get('changes_made', []))} 项修改",
+                "filename_txt": filename_txt,
+                "download_url_txt": f"/download/{filename_txt}",
             }
             _improvement_tasks[task_id]["completed_at"] = (
                 datetime.datetime.now().isoformat()
@@ -7035,7 +7162,13 @@ def api_improve_ads_status(task_id):
     if status == "completed":
         result = task.get("result", {})
         response["result"] = result
-        response["summary"] = result.get("summary", "广告已改进")
+        # 生成包含下载链接的summary
+        summary = result.get("summary", "广告已改进")
+        download_url = result.get("download_url_txt")
+        if download_url:
+            filename = result.get("filename_txt", "improved_ads.txt")
+            summary += f"<br><a href='{download_url}' download='{filename}'>📄 下载 TXT (可复制到Google Ads)</a>"
+        response["summary"] = summary
     elif status == "failed":
         response["error"] = task.get("error", "未知错误")
 
@@ -7125,7 +7258,13 @@ def api_workflow_improve_status(task_id):
     if status == "completed":
         result = task.get("result", {})
         response["result"] = result
-        response["summary"] = result.get("summary", "广告已改进")
+        # 生成包含下载链接的summary
+        summary = result.get("summary", "广告已改进")
+        download_url = result.get("download_url_txt")
+        if download_url:
+            filename = result.get("filename_txt", "improved_ads.txt")
+            summary += f"<br><a href='{download_url}' download='{filename}'>📄 下载 TXT (可复制到Google Ads)</a>"
+        response["summary"] = summary
     elif status == "failed":
         response["error"] = task.get("error", "未知错误")
 
