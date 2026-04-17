@@ -1392,13 +1392,14 @@ function scrapeSemrush(manualDomain) {
   btn.textContent = '采集中...'; btn.disabled = true;
   
   // 构建请求体
-  var payloadObj = { use_waimaoxia: true };
+  var payloadObj = { force: false };  // 使用 workflow API 格式
   if (manualDomain) {
     payloadObj.domain = manualDomain;
   }
   var payload = JSON.stringify(payloadObj);
   
-  fetch('/api/scrape_semrush/' + MID, {
+  // 使用统一的 workflow API（功能更完整：检查数据库、文件、保存到数据库）
+  fetch('/api/workflow/semrush/' + MID, {
     method:'POST',
     headers: {'Content-Type': 'application/json'},
     body: payload
@@ -1406,16 +1407,21 @@ function scrapeSemrush(manualDomain) {
     .then(function(r) { return r.json(); })
     .then(function(d) {
       btn.disabled = false; btn.textContent = '采集竞品数据';
-      if (d.ok) {
-        var modeText = d.mode === 'waimaoxia' ? '外贸侠模式' : '传统模式';
-        toast('SEMrush 采集任务已启动 (' + modeText + ')，请在新窗口中完成登录', 'success');
-        // 启动状态轮询
-        startStatusPolling(MID);
+      if (d.success) {
+        // 检查是否已有数据
+        if (d.data && d.data.has_data) {
+          toast('SEMrush 数据已存在，已加载缓存数据', 'success');
+          location.reload();
+        } else if (d.collecting) {
+          // 需要采集
+          toast('SEMrush 采集任务已启动，请在新窗口中完成登录', 'success');
+          startStatusPolling(MID);
+        }
       } else if (d.need_domain) {
-        // 需要手动输入域名 - 用自定义弹窗替代 prompt()
+        // 需要手动输入域名
         showDomainModal();
       } else {
-        toast('启动失败: ' + (d.msg || ''), 'error');
+        toast('启动失败: ' + (d.error || ''), 'error');
       }
     })
     .catch(function(e) { btn.disabled=false; btn.textContent='采集竞品数据'; toast('请求失败: '+e,'error'); });
@@ -1462,10 +1468,11 @@ function startStatusPolling(merchantId) {
       return;
     }
     
-    fetch('/api/scrape_semrush_status/' + merchantId)
+    // 使用 workflow API 检查状态（会检查数据库和文件）
+    fetch('/api/workflow/semrush/' + merchantId, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' })
       .then(function(r) { return r.json(); })
       .then(function(d) {
-        if (d.ok && d.status === 'completed') {
+        if (d.success && d.data && d.data.has_data) {
           clearInterval(statusPollingInterval);
           toast('SEMrush 数据采集完成！', 'success');
           // 刷新页面显示新数据
