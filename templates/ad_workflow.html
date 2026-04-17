@@ -858,7 +858,14 @@
             document.getElementById('modalTitle').textContent = title;
             
             // 构建详情内容
-            let bodyHtml = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+            let bodyHtml = '';
+            
+            // 特殊处理：评估节点显示评分结果
+            if (nodeId === 'evaluate' && data.avg_scores) {
+                bodyHtml = buildEvaluationDetail(data);
+            } else {
+                bodyHtml = `<pre style="white-space:pre-wrap;word-break:break-all;">${JSON.stringify(data, null, 2)}</pre>`;
+            }
             
             // 如果数据无效，显示警告提示
             if (!isValid) {
@@ -886,6 +893,108 @@
             }
             
             document.getElementById('modal').classList.add('active');
+        }
+        
+        // 构建评估详情 HTML
+        function buildEvaluationDetail(data) {
+            const scores = data.avg_scores || {};
+            const overall = data.avg_overall || 0;
+            const modelCount = data.model_count || 1;
+            const issues = data.consensus_issues || [];
+            const strengths = data.strengths || [];
+            const suggestions = data.suggestions || [];
+            
+            // 维度名称映射
+            const dimensionNames = {
+                'keyword_relevance': '关键词相关性',
+                'copy_appeal': '文案吸引力',
+                'character_compliance': '字符合规性',
+                'cta_effectiveness': '行动号召力',
+                'policy_compliance': '政策合规性'
+            };
+            
+            // 构建评分条
+            let scoresHtml = '';
+            for (const [dim, name] of Object.entries(dimensionNames)) {
+                const score = scores[dim] || 0;
+                const percent = score * 10;
+                const color = score >= 8 ? '#4caf50' : score >= 6 ? '#ff9800' : '#f44336';
+                scoresHtml += `
+                    <div style="margin-bottom:12px;">
+                        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                            <span>${name}</span>
+                            <span style="font-weight:bold;color:${color}">${score}/10</span>
+                        </div>
+                        <div style="background:#2a2d36;border-radius:4px;height:8px;overflow:hidden;">
+                            <div style="background:${color};height:100%;width:${percent}%;transition:width 0.5s;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // 构建问题列表
+            let issuesHtml = '';
+            if (issues.length > 0) {
+                issuesHtml = `
+                    <div style="margin-top:20px;">
+                        <h4 style="color:#f87171;margin-bottom:10px;">⚠️ 需要改进</h4>
+                        ${issues.map(issue => `
+                            <div style="background:#2d1f1f;border-left:3px solid #f87171;padding:10px;margin-bottom:8px;border-radius:4px;">
+                                <div style="font-weight:bold;margin-bottom:4px;">${issue.dimension || '问题'}</div>
+                                <div style="color:#aaa;font-size:13px;">${issue.issue || ''}</div>
+                                ${issue.suggestion ? `<div style="color:#4caf50;font-size:13px;margin-top:4px;">💡 ${issue.suggestion}</div>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            // 构建优点列表
+            let strengthsHtml = '';
+            if (strengths.length > 0) {
+                strengthsHtml = `
+                    <div style="margin-top:20px;">
+                        <h4 style="color:#4caf50;margin-bottom:10px;">✅ 优点</h4>
+                        <ul style="margin:0;padding-left:20px;color:#aaa;">
+                            ${strengths.map(s => `<li style="margin-bottom:4px;">${s}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            // 构建建议
+            let suggestionsHtml = '';
+            if (suggestions.length > 0) {
+                suggestionsHtml = `
+                    <div style="margin-top:20px;">
+                        <h4 style="color:#2196f3;margin-bottom:10px;">📝 改进建议</h4>
+                        <div style="background:#1a2332;padding:12px;border-radius:6px;font-size:13px;line-height:1.6;color:#ccc;">
+                            ${suggestions.join('<br><br>')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div style="padding:10px;">
+                    <!-- 总分 -->
+                    <div style="text-align:center;margin-bottom:20px;padding:20px;background:linear-gradient(135deg,#1a2332,#2a3a4a);border-radius:12px;">
+                        <div style="font-size:48px;font-weight:bold;color:${overall >= 8 ? '#4caf50' : overall >= 6 ? '#ff9800' : '#f44336'};">${overall}</div>
+                        <div style="color:#888;font-size:14px;">综合评分 / 10</div>
+                        <div style="color:#666;font-size:12px;margin-top:4px;">由 ${modelCount} 个 AI 模型评估</div>
+                    </div>
+                    
+                    <!-- 各维度评分 -->
+                    <div style="background:#1a1d24;padding:15px;border-radius:8px;">
+                        <h4 style="margin:0 0 15px 0;color:#fff;">📊 各维度评分</h4>
+                        ${scoresHtml}
+                    </div>
+                    
+                    ${issuesHtml}
+                    ${strengthsHtml}
+                    ${suggestionsHtml}
+                </div>
+            `;
         }
         
         // 检查节点是否支持重新采集

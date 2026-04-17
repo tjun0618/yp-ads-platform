@@ -4722,10 +4722,12 @@ def api_workflow_report(merchant_id):
 
 @bp.route("/api/workflow/evaluate/<merchant_id>", methods=["POST"])
 def api_workflow_evaluate(merchant_id):
-    """Step 9: 评估广告质量"""
+    """Step 9: 评估广告质量（多模型 AI 评估）"""
     try:
         data = request.get_json(silent=True) or {}
         selected_asin = data.get("asin", "").strip()
+        models = data.get("models", ["kimi"])  # 默认使用 KIMI 评估
+        force = data.get("force", False)
 
         if not selected_asin:
             return jsonify(
@@ -4736,43 +4738,58 @@ def api_workflow_evaluate(merchant_id):
                 }
             )
 
-        conn = get_db()
-        cur = conn.cursor(dictionary=True)
+        # 调用评估 API
+        from flask import Request
 
-        # 检查是否有广告方案
-        cur.execute(
-            "SELECT id, campaign_count, ad_group_count, ad_count FROM ads_plans WHERE asin = %s LIMIT 1",
-            (selected_asin,),
+        eval_request = Request.from_values(
+            method="POST", json={"models": models, "force": force}
         )
-        plan = cur.fetchone()
-        conn.close()
 
-        if plan:
-            score = 60
-            if plan.get("campaign_count", 0) >= 2:
-                score += 15
-            if plan.get("ad_group_count", 0) >= 3:
-                score += 15
-            if plan.get("ad_count", 0) >= 6:
-                score += 10
+        # 直接调用评估函数
+        result = api_evaluate_ads(selected_asin)
 
-            return jsonify(
-                {
-                    "success": True,
-                    "data": {
-                        "asin": selected_asin,
-                        "score": score,
-                        "campaigns": plan.get("campaign_count", 0),
-                        "ad_groups": plan.get("ad_group_count", 0),
-                        "ads": plan.get("ad_count", 0),
-                    },
-                    "summary": f"质量评分: {score}/100",
-                }
-            )
-        else:
-            return jsonify({"success": False, "error": "没有广告方案，请先生成广告"})
+        if isinstance(result, tuple):
+            result = result[0]
+
+        result_data = json.loads(result.get_data(as_text=True))
+
+        if not result_data.get("success"):
+            return jsonify(result_data)
+
+        summary = result_data.get("summary", {})
+
+        # 格式化输出
+        avg_scores = summary.get("avg_scores", {})
+        avg_overall = summary.get("avg_overall", 0)
+        model_count = summary.get("model_count", 0)
+        consensus_issues = summary.get("consensus_issues", [])
+        strengths = summary.get("strengths", [])
+
+        # 构建显示摘要
+        summary_text = f"综合评分: {avg_overall}/10 ({model_count} 个模型评估)"
+
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "asin": selected_asin,
+                    "avg_scores": avg_scores,
+                    "avg_overall": avg_overall,
+                    "model_count": model_count,
+                    "consensus_issues": consensus_issues,
+                    "strengths": strengths,
+                    "suggestions": summary.get("suggestions", []),
+                },
+                "summary": summary_text,
+                "evaluations": result_data.get("results", []),
+                "cached": result_data.get("cached", False),
+            }
+        )
 
     except Exception as e:
+        import traceback
+
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)})
 
 
@@ -5776,3 +5793,632 @@ def download_ads_plan(filename):
 
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 广告质量评估 API
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 评估维度权重
+EVALUATION_WEIGHTS = {
+    "keyword_relevance": 0.20,  # 关键词相关性
+    "copy_appeal": 0.25,  # 文案吸引力
+    "character_compliance": 0.15,  # 字符合规性
+    "cta_effectiveness": 0.20,  # 行动号召力
+    "policy_compliance": 0.20,  # 政策合规性
+}
+
+# Google Ads 禁用词列表
+AD_BANNED_WORDS = [
+    "best",
+    "#1",
+    "number one",
+    "guaranteed",
+    "click here",
+    "limited time",
+    "act now",
+    "hurry",
+    "miracle",
+    "instant",
+    "overnight",
+    "permanent",
+    "cure",
+    "100%",
+    "works for everyone",
+    "free money",
+    "no risk",
+    "winner",
+    "congratulations",
+]
+
+
+def _build_evaluation_prompt(product: dict, ads_plan: dict) -> str:
+    """构建评估 Prompt"""
+
+    # 提取产品信息
+    product_name = product.get("amz_title") or product.get("product_name", "")
+    brand = product.get("brand", "Unknown")
+    price = product.get("price", "0")
+    rating = product.get("rating", "0")
+    review_count = product.get("review_count", "0")
+
+    # 提取广告方案信息
+    campaigns = ads_plan.get("campaigns", [])
+
+    # 统计广告方案
+    total_ad_groups = sum(len(c.get("ad_groups", [])) for c in campaigns)
+    total_keywords = sum(
+        len(ag.get("keywords", [])) for c in campaigns for ag in c.get("ad_groups", [])
+    )
+    total_ads = sum(
+        len(ag.get("headlines", [])) for c in campaigns for ag in c.get("ad_groups", [])
+    )
+
+    prompt = f"""You are a Google Ads Quality Evaluation Expert. Please evaluate the following ad plan.
+
+## Product Information
+- Product: {product_name}
+- Brand: {brand}
+- Price: ${price}
+- Rating: {rating}/5 ({review_count} reviews)
+
+## Ad Plan Summary
+- Campaigns: {len(campaigns)}
+- Ad Groups: {total_ad_groups}
+- Keywords: {total_keywords}
+- Ads: {total_ads}
+
+## Ad Plan Details (JSON)
+```json
+{json.dumps(ads_plan, indent=2, ensure_ascii=False)[:3000]}
+```
+
+## Evaluation Criteria (Score 1-10 for each dimension)
+
+1. **Keyword Relevance (20%)**: How well do keywords match the product and ad copy?
+   - Are keywords specific and relevant to the product?
+   - Do they match user search intent?
+   - Are negative keywords properly set?
+
+2. **Copy Appeal (25%)**: How attractive and compelling are the headlines and descriptions?
+   - Are headlines attention-grabbing?
+   - Do descriptions highlight key benefits?
+   - Is the language natural and engaging?
+
+3. **Character Compliance (15%)**: Do ads meet Google Ads character limits?
+   - Headlines: max 30 characters each
+   - Descriptions: max 90 characters each
+   - Check each ad for compliance
+
+4. **CTA Effectiveness (20%)**: How effective are the calls-to-action?
+   - Is there a clear CTA in each ad?
+   - Does the CTA encourage action?
+   - Examples: "Shop Now", "Learn More", "Get Deal"
+
+5. **Policy Compliance (20%)**: Does the ad comply with Google Ads policies?
+   - No prohibited words: {", ".join(AD_BANNED_WORDS[:10])}
+   - No misleading claims
+   - No excessive punctuation or capitalization
+
+## Output Format (JSON only, no markdown)
+{{
+  "scores": {{
+    "keyword_relevance": <1-10>,
+    "copy_appeal": <1-10>,
+    "character_compliance": <1-10>,
+    "cta_effectiveness": <1-10>,
+    "policy_compliance": <1-10>
+  }},
+  "overall_score": <weighted average 1-10>,
+  "issues": [
+    {{
+      "dimension": "<dimension_name>",
+      "severity": "<high|medium|low>",
+      "issue": "<description of the issue>",
+      "suggestion": "<specific improvement suggestion>"
+    }}
+  ],
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "improvement_suggestions": "<detailed suggestions for improvement>"
+}}
+
+Evaluate thoroughly and provide specific, actionable feedback."""
+
+    return prompt
+
+
+def _parse_evaluation_response(response_text: str) -> dict:
+    """解析评估响应"""
+    import re
+
+    result = {
+        "scores": {},
+        "overall_score": 0,
+        "issues": [],
+        "strengths": [],
+        "improvement_suggestions": "",
+        "raw_response": response_text,
+    }
+
+    # 尝试解析 JSON
+    try:
+        # 查找 JSON 块
+        if "```json" in response_text:
+            start = response_text.find("```json") + 7
+            end = response_text.find("```", start)
+            json_str = response_text[start:end].strip()
+        elif "{" in response_text:
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            json_str = response_text[start:end]
+        else:
+            json_str = response_text
+
+        parsed = json.loads(json_str)
+
+        # 提取各字段
+        result["scores"] = parsed.get("scores", {})
+        result["overall_score"] = parsed.get("overall_score", 0)
+        result["issues"] = parsed.get("issues", [])
+        result["strengths"] = parsed.get("strengths", [])
+        result["improvement_suggestions"] = parsed.get("improvement_suggestions", "")
+
+    except Exception as e:
+        print(f"[Evaluation] Parse error: {e}")
+        # 尝试从文本中提取评分
+        score_patterns = {
+            "keyword_relevance": r"keyword_relevance[\"']?\s*[:=]\s*(\d+)",
+            "copy_appeal": r"copy_appeal[\"']?\s*[:=]\s*(\d+)",
+            "character_compliance": r"character_compliance[\"']?\s*[:=]\s*(\d+)",
+            "cta_effectiveness": r"cta_effectiveness[\"']?\s*[:=]\s*(\d+)",
+            "policy_compliance": r"policy_compliance[\"']?\s*[:=]\s*(\d+)",
+        }
+        for dim, pattern in score_patterns.items():
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                result["scores"][dim] = int(match.group(1))
+
+    # 计算加权平均分
+    if result["scores"]:
+        weighted_sum = sum(
+            result["scores"].get(dim, 0) * weight
+            for dim, weight in EVALUATION_WEIGHTS.items()
+        )
+        result["overall_score"] = round(weighted_sum, 1)
+
+    return result
+
+
+def _evaluate_with_kimi(product: dict, ads_plan: dict) -> dict:
+    """使用 KIMI 评估广告质量"""
+    from kimi_client import KimiClient
+
+    api_key = os.environ.get("KIMI_API_KEY", "")
+    if not api_key:
+        raise ValueError("请设置环境变量 KIMI_API_KEY")
+
+    client = KimiClient(model="kimi-k2.5", api_key=api_key)
+    prompt = _build_evaluation_prompt(product, ads_plan)
+
+    response = client.chat(prompt, stream=False)
+    return _parse_evaluation_response(response)
+
+
+def _evaluate_with_qianfan(product: dict, ads_plan: dict) -> dict:
+    """使用百度千帆评估广告质量"""
+    from qianfan_client import QianfanClient
+
+    bearer_token = os.environ.get("QIANFAN_BEARER_TOKEN", "")
+    if not bearer_token:
+        raise ValueError("请设置环境变量 QIANFAN_BEARER_TOKEN")
+
+    client = QianfanClient(model="ernie-4.0-8k", bearer_token=bearer_token)
+    prompt = _build_evaluation_prompt(product, ads_plan)
+
+    response = client.chat(prompt, stream=False)
+    return _parse_evaluation_response(response)
+
+
+def _evaluate_with_deepseek(product: dict, ads_plan: dict) -> dict:
+    """使用 DeepSeek 评估广告质量"""
+    import requests
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        raise ValueError("请设置环境变量 DEEPSEEK_API_KEY")
+
+    prompt = _build_evaluation_prompt(product, ads_plan)
+
+    response = requests.post(
+        "https://api.deepseek.com/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+        },
+        timeout=60,
+    )
+
+    data = response.json()
+    if "error" in data:
+        raise ValueError(f"DeepSeek API 错误: {data['error']}")
+
+    content = data["choices"][0]["message"]["content"]
+    return _parse_evaluation_response(content)
+
+
+def _save_evaluation_to_db(asin: str, plan_id: int, model_name: str, evaluation: dict):
+    """保存评估结果到数据库"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        INSERT INTO ads_quality_evaluations 
+            (asin, plan_id, model_name, scores, overall_score, issues, strengths, suggestions, raw_response)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            scores = VALUES(scores),
+            overall_score = VALUES(overall_score),
+            issues = VALUES(issues),
+            strengths = VALUES(strengths),
+            suggestions = VALUES(suggestions),
+            raw_response = VALUES(raw_response),
+            evaluated_at = NOW()
+    """,
+        (
+            asin,
+            plan_id,
+            model_name,
+            json.dumps(evaluation.get("scores", {}), ensure_ascii=False),
+            evaluation.get("overall_score", 0),
+            json.dumps(evaluation.get("issues", []), ensure_ascii=False),
+            json.dumps(evaluation.get("strengths", []), ensure_ascii=False),
+            evaluation.get("improvement_suggestions", ""),
+            evaluation.get("raw_response", ""),
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+
+def _aggregate_evaluations(asin: str, plan_id: int) -> dict:
+    """汇总多个模型的评估结果"""
+    conn = get_db()
+    cur = conn.cursor(dictionary=True)
+
+    # 获取所有评估结果
+    cur.execute(
+        """
+        SELECT model_name, scores, overall_score, issues, strengths, suggestions
+        FROM ads_quality_evaluations
+        WHERE asin = %s AND (plan_id = %s OR plan_id IS NULL)
+    """,
+        (asin, plan_id),
+    )
+
+    evaluations = cur.fetchall()
+
+    if not evaluations:
+        conn.close()
+        return {"success": False, "error": "没有评估结果"}
+
+    # 计算各维度平均分
+    avg_scores = {}
+    for dim in EVALUATION_WEIGHTS.keys():
+        scores = []
+        for ev in evaluations:
+            scores_data = (
+                json.loads(ev["scores"])
+                if isinstance(ev["scores"], str)
+                else ev["scores"]
+            )
+            if dim in scores_data:
+                scores.append(scores_data[dim])
+        avg_scores[dim] = round(sum(scores) / len(scores), 1) if scores else 0
+
+    # 计算总体平均分
+    overall_scores = [ev["overall_score"] for ev in evaluations]
+    avg_overall = round(sum(overall_scores) / len(overall_scores), 1)
+
+    # 找出共识问题（多个模型都指出的问题）
+    all_issues = []
+    for ev in evaluations:
+        issues = (
+            json.loads(ev["issues"]) if isinstance(ev["issues"], str) else ev["issues"]
+        )
+        all_issues.extend(issues)
+
+    # 按维度统计问题
+    issue_counts = {}
+    for issue in all_issues:
+        dim = issue.get("dimension", "general")
+        if dim not in issue_counts:
+            issue_counts[dim] = []
+        issue_counts[dim].append(issue)
+
+    # 共识问题：出现次数 >= 模型数量的一半
+    consensus_issues = []
+    model_count = len(evaluations)
+    for dim, issues in issue_counts.items():
+        if len(issues) >= model_count / 2:
+            consensus_issues.append(issues[0])  # 取第一个作为代表
+
+    # 汇总优点
+    all_strengths = []
+    for ev in evaluations:
+        strengths = (
+            json.loads(ev["strengths"])
+            if isinstance(ev["strengths"], str)
+            else ev["strengths"]
+        )
+        all_strengths.extend(strengths)
+
+    # 去重
+    unique_strengths = list(set(all_strengths))[:5]
+
+    # 汇总建议
+    all_suggestions = []
+    for ev in evaluations:
+        if ev["suggestions"]:
+            all_suggestions.append(f"[{ev['model_name']}] {ev['suggestions']}")
+
+    # 保存汇总结果
+    cur.execute(
+        """
+        INSERT INTO ads_evaluation_summary 
+            (asin, plan_id, avg_scores, consensus_issues, final_suggestions, model_count)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            avg_scores = VALUES(avg_scores),
+            consensus_issues = VALUES(consensus_issues),
+            final_suggestions = VALUES(final_suggestions),
+            model_count = VALUES(model_count),
+            updated_at = NOW()
+    """,
+        (
+            asin,
+            plan_id,
+            json.dumps(avg_scores, ensure_ascii=False),
+            json.dumps(consensus_issues, ensure_ascii=False),
+            "\n\n".join(all_suggestions),
+            model_count,
+        ),
+    )
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "success": True,
+        "asin": asin,
+        "model_count": model_count,
+        "avg_scores": avg_scores,
+        "avg_overall": avg_overall,
+        "consensus_issues": consensus_issues,
+        "strengths": unique_strengths,
+        "suggestions": all_suggestions,
+    }
+
+
+@bp.route("/api/evaluate_ads/<asin>", methods=["POST"])
+def api_evaluate_ads(asin: str):
+    """
+    评估广告质量
+
+    参数：
+    - models: 评估模型列表，如 ["kimi", "qianfan"]，默认 ["kimi"]
+    - force: 是否强制重新评估
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        models = data.get("models", ["kimi"])
+        force = data.get("force", False)
+
+        # 获取产品信息
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute(
+            """
+            SELECT p.asin, p.product_name, p.price, p.commission,
+                   a.title as amz_title, a.brand, a.rating, a.review_count
+            FROM yp_us_products p
+            LEFT JOIN amazon_product_details a ON p.asin = a.asin
+            WHERE p.asin = %s LIMIT 1
+        """,
+            (asin,),
+        )
+
+        product = cur.fetchone()
+        if not product:
+            conn.close()
+            return jsonify({"success": False, "error": f"找不到商品 {asin}"})
+
+        # 获取广告方案
+        cur.execute(
+            """
+            SELECT id, plan_data, generated_at
+            FROM ads_plans
+            WHERE asin = %s
+            ORDER BY generated_at DESC LIMIT 1
+        """,
+            (asin,),
+        )
+
+        plan = cur.fetchone()
+        if not plan:
+            conn.close()
+            return jsonify(
+                {"success": False, "error": f"商品 {asin} 没有广告方案，请先生成广告"}
+            )
+
+        plan_id = plan["id"]
+        ads_plan = (
+            json.loads(plan["plan_data"])
+            if isinstance(plan["plan_data"], str)
+            else plan["plan_data"]
+        )
+
+        # 检查是否已有评估结果
+        if not force:
+            cur.execute(
+                """
+                SELECT model_name, scores, overall_score, issues, strengths, suggestions
+                FROM ads_quality_evaluations
+                WHERE asin = %s AND plan_id = %s
+            """,
+                (asin, plan_id),
+            )
+
+            existing = cur.fetchall()
+            if len(existing) >= len(models):
+                # 已有所有模型的评估结果，直接返回汇总
+                conn.close()
+                summary = _aggregate_evaluations(asin, plan_id)
+                return jsonify(
+                    {
+                        "success": True,
+                        "cached": True,
+                        "summary": summary,
+                        "evaluations": existing,
+                    }
+                )
+
+        conn.close()
+
+        # 执行评估
+        results = []
+        errors = []
+
+        for model in models:
+            try:
+                print(f"[Evaluation] Evaluating with {model}...")
+
+                if model == "kimi":
+                    evaluation = _evaluate_with_kimi(product, ads_plan)
+                elif model == "qianfan":
+                    evaluation = _evaluate_with_qianfan(product, ads_plan)
+                elif model == "deepseek":
+                    evaluation = _evaluate_with_deepseek(product, ads_plan)
+                else:
+                    errors.append(f"不支持的模型: {model}")
+                    continue
+
+                # 保存评估结果
+                _save_evaluation_to_db(asin, plan_id, model, evaluation)
+
+                results.append(
+                    {
+                        "model": model,
+                        "evaluation": evaluation,
+                    }
+                )
+
+            except Exception as e:
+                errors.append(f"{model} 评估失败: {str(e)}")
+                print(f"[Evaluation] {model} error: {e}")
+
+        if not results:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "所有模型评估失败",
+                    "errors": errors,
+                }
+            )
+
+        # 汇总结果
+        summary = _aggregate_evaluations(asin, plan_id)
+
+        return jsonify(
+            {
+                "success": True,
+                "cached": False,
+                "summary": summary,
+                "results": results,
+                "errors": errors if errors else None,
+            }
+        )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/evaluation_summary/<asin>", methods=["GET"])
+def api_evaluation_summary(asin: str):
+    """获取评估汇总结果"""
+    try:
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        # 获取最新的 plan_id
+        cur.execute(
+            """
+            SELECT id FROM ads_plans
+            WHERE asin = %s
+            ORDER BY generated_at DESC LIMIT 1
+        """,
+            (asin,),
+        )
+
+        plan = cur.fetchone()
+        if not plan:
+            conn.close()
+            return jsonify({"success": False, "error": "没有广告方案"})
+
+        plan_id = plan["id"]
+
+        # 获取汇总结果
+        cur.execute(
+            """
+            SELECT avg_scores, consensus_issues, final_suggestions, model_count, created_at
+            FROM ads_evaluation_summary
+            WHERE asin = %s AND plan_id = %s
+        """,
+            (asin, plan_id),
+        )
+
+        summary = cur.fetchone()
+
+        # 获取各模型评估结果
+        cur.execute(
+            """
+            SELECT model_name, scores, overall_score, issues, strengths, suggestions, evaluated_at
+            FROM ads_quality_evaluations
+            WHERE asin = %s AND plan_id = %s
+        """,
+            (asin, plan_id),
+        )
+
+        evaluations = cur.fetchall()
+        conn.close()
+
+        if not summary and not evaluations:
+            return jsonify(
+                {
+                    "success": True,
+                    "has_evaluation": False,
+                    "message": "尚未评估，请先执行评估",
+                }
+            )
+
+        return jsonify(
+            {
+                "success": True,
+                "has_evaluation": True,
+                "summary": summary,
+                "evaluations": evaluations,
+            }
+        )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
