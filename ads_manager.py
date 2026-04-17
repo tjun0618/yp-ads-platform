@@ -19,6 +19,29 @@ Flask 应用入口 - Blueprint 架构
 import os
 import sys
 
+
+# 加载 .env 文件中的环境变量
+def load_env_file():
+    """手动加载 .env 文件到环境变量"""
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                # 跳过空行和注释
+                if not line or line.startswith("#"):
+                    continue
+                # 解析 KEY=VALUE
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                    key = key.strip()
+                    value = value.strip()
+                    if key and value:
+                        os.environ[key] = value
+
+
+load_env_file()
+
 from flask import Flask, request, jsonify, redirect, send_file
 
 # 导入配置和数据库模块
