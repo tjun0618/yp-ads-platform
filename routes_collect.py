@@ -2339,10 +2339,10 @@ def api_parse_semrush_screenshots():
             "_debug_ocr": {},
         }
 
-        # Kimi API 配置
-        api_key = os.environ.get(
-            "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-        )
+        # Kimi API 配置（仅从环境变量读取）
+        api_key = os.environ.get("KIMI_API_KEY", "")
+        if not api_key:
+            return jsonify({"success": False, "error": "请设置环境变量 KIMI_API_KEY"})
 
         def _parse_with_kimi_vision(image_path, screenshot_type):
             """使用 Kimi Vision API 解析截图"""

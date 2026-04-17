@@ -16,10 +16,10 @@ from flask import Blueprint, Response, request, stream_with_context
 
 bp = Blueprint("agent_chat", __name__)
 
-# ─── API Key ──────────────────────────────────────────────────────────────────
-KIMI_API_KEY = os.environ.get(
-    "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-)
+# ─── API Key（仅从环境变量读取）─────────────────────────────────
+KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
+if not KIMI_API_KEY:
+    print("[WARN] 未设置环境变量 KIMI_API_KEY")
 KIMI_BASE_URL = "https://api.moonshot.cn/v1"
 
 # ─── System Prompt ─────────────────────────────────────────────────────────────
@@ -405,7 +405,7 @@ def api_agent_chat():
 
             if resp.status_code != 200:
                 err = resp.text[:300]
-                yield f'data: {json.dumps({"error": f"API 错误 {resp.status_code}: {err}"}, ensure_ascii=False)}\n\n'
+                yield f"data: {json.dumps({'error': f'API 错误 {resp.status_code}: {err}'}, ensure_ascii=False)}\n\n"
                 return
 
             for line in resp.iter_lines():
@@ -423,12 +423,12 @@ def api_agent_chat():
                     delta = obj.get("choices", [{}])[0].get("delta", {})
                     content = delta.get("content", "")
                     if content:
-                        yield f'data: {json.dumps({"text": content}, ensure_ascii=False)}\n\n'
+                        yield f"data: {json.dumps({'text': content}, ensure_ascii=False)}\n\n"
                 except Exception:
                     continue
 
         except Exception as e:
-            yield f'data: {json.dumps({"error": str(e)}, ensure_ascii=False)}\n\n'
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
     return Response(
         stream_with_context(generate()),

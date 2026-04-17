@@ -92,11 +92,10 @@ class AgentExecutor:
                 import os
                 from qianfan_client import QianfanClient
 
-                # 优先从环境变量读取，其次使用配置
+                # 仅从环境变量读取
                 bearer_token = os.environ.get("QIANFAN_BEARER_TOKEN", "")
                 if not bearer_token:
-                    # 临时硬编码测试用
-                    bearer_token = "bce-v3/ALTAK-Q4oPQbtg0DGqhhKZbeWgK/24f121628d6064d35bac5676023f7b580e05b463"
+                    raise ValueError("请设置环境变量 QIANFAN_BEARER_TOKEN")
 
                 self._client = QianfanClient(
                     model=self.config.model,

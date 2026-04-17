@@ -149,9 +149,9 @@ Be specific in your suggestions. Focus on actionable improvements."""
             api_key: API 密钥（可选，默认从环境变量读取）
         """
         self.model = model
-        self.api_key = api_key or os.environ.get(
-            "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-        )
+        self.api_key = api_key or os.environ.get("KIMI_API_KEY", "")
+        if not self.api_key:
+            raise ValueError("请设置环境变量 KIMI_API_KEY")
 
     def evaluate_ad(
         self,
@@ -286,9 +286,7 @@ Be specific in your suggestions. Focus on actionable improvements."""
                 },
                 json={
                     "model": "moonshot-v1-8k",
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ],
+                    "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.3,  # 低温度，更稳定
                     "max_tokens": 1000,
                 },

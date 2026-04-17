@@ -2186,10 +2186,10 @@ def api_generate_ai(asin):
     force = request.args.get("force", "0") == "1"
     llm_provider = request.args.get("llm", "kimi")  # kimi | qianfan
 
-    # KIMI API Key（优先环境变量，其次硬编码）
-    KIMI_API_KEY = os.environ.get(
-        "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-    )
+    # KIMI API Key（仅从环境变量读取）
+    KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
+    if not KIMI_API_KEY:
+        raise ValueError("请设置环境变量 KIMI_API_KEY")
 
     def generate():
         q = queue.Queue()
@@ -2325,10 +2325,10 @@ def api_generate_ai(asin):
                     else:
                         from qianfan_client import QianfanClient
 
-                        # 优先从环境变量读取，其次使用配置
+                        # 仅从环境变量读取
                         bearer_token = os.environ.get("QIANFAN_BEARER_TOKEN", "")
                         if not bearer_token:
-                            bearer_token = "bce-v3/ALTAK-Q4oPQbtg0DGqhhKZbeWgK/24f121628d6064d35bac5676023f7b580e05b463"
+                            raise ValueError("请设置环境变量 QIANFAN_BEARER_TOKEN")
 
                         client = QianfanClient(
                             model="ernie-4.0-8k", bearer_token=bearer_token
@@ -3198,9 +3198,9 @@ IMPORTANT: Based on the experience above, generate BETTER ads than before. Use d
     # ========== Engine 3: Pure KIMI API（无记忆） ==========
     if result_text is None and backend == "kimi":
         try:
-            api_key = os.environ.get(
-                "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-            )
+            api_key = os.environ.get("KIMI_API_KEY", "")
+            if not api_key:
+                raise ValueError("请设置环境变量 KIMI_API_KEY")
 
             resp = requests.post(
                 "https://api.moonshot.cn/v1/chat/completions",
@@ -5028,10 +5028,10 @@ def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
 
     asin = product.get("asin", "")
 
-    # KIMI API Key
-    KIMI_API_KEY = os.environ.get(
-        "KIMI_API_KEY", "sk-Id6uRyPXBuYMKc901g35NzREkAOhWBBDeDNR07bj7YalIwWy"
-    )
+    # KIMI API Key（仅从环境变量读取）
+    KIMI_API_KEY = os.environ.get("KIMI_API_KEY", "")
+    if not KIMI_API_KEY:
+        raise ValueError("请设置环境变量 KIMI_API_KEY")
 
     # 解析产品信息
     title = product.get("amz_title") or product.get("product_name", "")
