@@ -193,7 +193,7 @@ def incremental_refresh():
         LEFT JOIN yp_us_products u ON p.asin = u.asin
         WHERE u.asin IS NULL
           AND p.merchant_name IN (
-              SELECT merchant_name FROM yp_merchants WHERE country LIKE 'US -%'
+              SELECT merchant_name FROM yp_merchants WHERE (country LIKE 'US -%' OR country LIKE 'US/%' OR country LIKE 'United States%')
           )
     """)
     new_rows = cur.rowcount
@@ -209,7 +209,7 @@ def incremental_refresh():
             u.tracking_url = p.tracking_url,
             u.product_id = p.id
         WHERE p.merchant_name IN (
-            SELECT merchant_name FROM yp_merchants WHERE country LIKE 'US -%'
+            SELECT merchant_name FROM yp_merchants WHERE (country LIKE 'US -%' OR country LIKE 'US/%' OR country LIKE 'United States%')
         )
     """)
     updated_rows = cur.rowcount
