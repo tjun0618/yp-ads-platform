@@ -26,6 +26,11 @@ from app_config import (
     YP_SYNC_SCRIPT,
     PYTHON_EXE,
 )
+
+# Google Ads 技能文件路径
+GOOGLE_ADS_SKILL_PATH = Path(r"D:\workspace\claws\google-ads-skill\SKILL-Google-Ads.md")
+GOOGLE_ADS_SKILL_VERSION = "6.3"
+
 from db import (
     get_db,
     _db,
@@ -5154,11 +5159,12 @@ def api_workflow_collect_status(task_id):
 
 def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
     """
-    使用 AI 生成广告方案（精简 prompt 版本）
+    使用 AI + Google Ads 技能生成广告方案
 
-    优化策略：
-    1. 精简 prompt - 只保留核心指令，不读取整个技能文件
-    2. 结构化输出 - 明确 JSON 格式要求
+    流程：
+    1. 读取 Google Ads 技能文件
+    2. 构建包含完整技能流程的 prompt
+    3. 调用 AI 执行 10 步工作流程
     """
     import os
     import re
@@ -5199,12 +5205,77 @@ def _generate_ads_with_ai(product: dict, brand_keywords: list) -> dict:
     category = product.get("category_path") or ""
     bullet_points = product.get("bullet_points") or ""
 
-    # 精简 bullet_points（只取前 500 字符）
-    if isinstance(bullet_points, str) and len(bullet_points) > 500:
-        bullet_points = bullet_points[:500] + "..."
+    # 读取技能文件
+    skill_content = ""
+    if GOOGLE_ADS_SKILL_PATH.exists():
+        with open(GOOGLE_ADS_SKILL_PATH, "r", encoding="utf-8") as f:
+            skill_content = f.read()
+        print(f"[AI Generate] Loaded skill file: {GOOGLE_ADS_SKILL_PATH}")
+        print(f"[AI Generate] Skill file size: {len(skill_content)} chars")
+    else:
+        print(f"[AI Generate] Warning: Skill file not found: {GOOGLE_ADS_SKILL_PATH}")
 
-    # 构建精简的 prompt
-    prompt = f"""# Task: Generate Google Ads Plan for Amazon Affiliate Product
+    # 构建产品信息
+    product_info = f"""
+## 产品信息
+
+- **ASIN**: {asin}
+- **商品名称**: {title}
+- **品牌**: {brand}
+- **价格**: ${price:.2f}
+- **佣金率**: {commission_str} (${price * commission_rate:.2f} per sale)
+- **评分**: {rating}/5 ({review_count} reviews)
+- **类目**: {category}
+- **品牌关键词**: {", ".join(brand_keywords[:10]) if brand_keywords else "无"}
+
+### 产品卖点
+{bullet_points[:500] if bullet_points else "暂无"}
+"""
+
+    # 构建完整 prompt
+    if skill_content:
+        prompt = f"""# Task: 执行 Google Ads 技能 v{GOOGLE_ADS_SKILL_VERSION}
+
+请严格按照以下技能文件的 10 步工作流程执行，为产品生成完整的 Google Ads 广告方案。
+
+---
+
+{skill_content}
+
+---
+
+{product_info}
+
+---
+
+## 输出要求
+
+请按照技能文件的 10 步工作流程执行，输出完整的 JSON 格式广告方案：
+
+1. **product_analysis**: 产品品类智能分析结果
+2. **profitability**: 盈利可行性评估
+3. **account_negative_keywords**: 账户级否定关键词
+4. **campaigns**: Campaign 数组，每个包含：
+   - name: Campaign 名称（英文）
+   - budget_daily: 日预算（USD）
+   - bid_strategy: 竞价策略
+   - campaign_negative_keywords: Campaign 级否定关键词
+   - ad_groups: Ad Group 数组，每个包含：
+     - name: Ad Group 名称
+     - theme: 主题
+     - keywords: 关键词数组 {{"kw": "keyword", "match": "E|P|B"}}
+     - negative_keywords: 否定关键词
+     - headlines: 标题数组 {{"text": "...", "chars": N}}（最多30字符）
+     - descriptions: 描述数组 {{"text": "...", "chars": N}}（最多90字符）
+5. **sitelinks**: Sitelink 扩展
+6. **callouts**: Callout 扩展
+7. **qa_report**: QA 检查报告
+
+输出 ONLY valid JSON，不要包含 markdown 代码块标记。
+"""
+    else:
+        # 降级：使用精简 prompt
+        prompt = f"""# Task: Generate Google Ads Plan for Amazon Affiliate Product
 
 ## Product Info
 - ASIN: {asin}
@@ -5249,8 +5320,9 @@ Output ONLY valid JSON, no markdown code blocks."""
 
     client = KimiClient(model="kimi-k2.5", api_key=KIMI_API_KEY)
 
-    # 设置较短的超时
+    print(f"[AI Generate] Calling KIMI API...")
     result_text = client.chat(prompt, stream=False)
+    print(f"[AI Generate] Response length: {len(result_text)} chars")
 
     # 解析 JSON
     json_result = None
@@ -5290,7 +5362,7 @@ Output ONLY valid JSON, no markdown code blocks."""
         "rating": rating,
         "review_count": review_count,
         "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "skill_version": "Google Ads 5.0",
+        "skill_version": f"Google Ads {GOOGLE_ADS_SKILL_VERSION}",
         "generation_method": "AI",
     }
 
@@ -5713,7 +5785,7 @@ def _generate_ads_with_rules(product: dict, brand_keywords: list) -> dict:
             "rating": rating,
             "review_count": review_count,
             "generated_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "skill_version": "Google Ads 5.0",
+            "skill_version": f"Google Ads {GOOGLE_ADS_SKILL_VERSION}",
             "generation_method": "Rule Engine",
         },
     }
