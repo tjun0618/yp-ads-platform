@@ -39,7 +39,7 @@ DB_CONFIG = dict(
     database="affiliate_marketing",
     charset="utf8mb4",
 )
-CHROME_WS = "http://localhost:9222"  # Chrome 调试端口
+CHROME_WS = "http://127.0.0.1:9222"  # Chrome 调试端口（使用 127.0.0.1 避免 IPv6 问题）
 PAGE_TIMEOUT = 25000  # ms，页面加载超时
 NAV_DELAY = 2.5  # 秒，导航后等待
 RETRY_LIMIT = 2  # 失败重试次数
