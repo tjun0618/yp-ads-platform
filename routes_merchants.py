@@ -626,8 +626,13 @@ def api_merchant_products():
     q = request.args.get("q", "").strip()
     page = max(1, int(request.args.get("page", 1)))
     size = min(200, max(10, int(request.args.get("size", 50))))
+    sort = request.args.get(
+        "sort", "id_desc"
+    )  # 排序参数：id_desc, earn_desc, earn_asc, price_desc, price_asc, commission_desc, commission_asc
 
-    print(f"[DEBUG] api_merchant_products: mid={mid}, q={q}, page={page}, size={size}")
+    print(
+        f"[DEBUG] api_merchant_products: mid={mid}, q={q}, page={page}, size={size}, sort={sort}"
+    )
 
     if not mid:
         return jsonify({"error": "merchant_id required"}), 400
@@ -648,8 +653,24 @@ def api_merchant_products():
             base_where += " AND (p.product_name LIKE %s OR p.asin LIKE %s)"
             params.extend([f"%{q}%", f"%{q}%"])
 
+        # 排序逻辑
+        order_map = {
+            "id_desc": "p.id DESC",
+            "id_asc": "p.id ASC",
+            "earn_desc": "(CAST(p.price AS DECIMAL(10,2)) * CAST(REPLACE(REPLACE(p.commission,'%',''),'$','') AS DECIMAL(10,2)) / 100) DESC",
+            "earn_asc": "(CAST(p.price AS DECIMAL(10,2)) * CAST(REPLACE(REPLACE(p.commission,'%',''),'$','') AS DECIMAL(10,2)) / 100) ASC",
+            "price_desc": "CAST(p.price AS DECIMAL(10,2)) DESC",
+            "price_asc": "CAST(p.price AS DECIMAL(10,2)) ASC",
+            "commission_desc": "CAST(REPLACE(REPLACE(p.commission,'%',''),'$','') AS DECIMAL(10,2)) DESC",
+            "commission_asc": "CAST(REPLACE(REPLACE(p.commission,'%',''),'$','') AS DECIMAL(10,2)) ASC",
+            "rating_desc": "CAST(d.rating AS DECIMAL(3,1)) DESC",
+            "rating_asc": "CAST(d.rating AS DECIMAL(3,1)) ASC",
+        }
+        order_by = order_map.get(sort, "p.id DESC")
+
         print(f"[DEBUG] base_where: {base_where}")
         print(f"[DEBUG] params: {params}")
+        print(f"[DEBUG] order_by: {order_by}")
 
         cur.execute(
             f"""SELECT SQL_CALC_FOUND_ROWS p.id, p.asin, p.product_name, p.price, p.commission,
@@ -658,7 +679,7 @@ def api_merchant_products():
                                pl.plan_status
                         FROM yp_products p LEFT JOIN amazon_product_details d ON p.asin=d.asin
                         LEFT JOIN ads_plans pl ON p.asin=pl.asin
-                        {base_where} ORDER BY p.id DESC LIMIT %s OFFSET %s""",
+                        {base_where} ORDER BY {order_by} LIMIT %s OFFSET %s""",
             params + [size, (page - 1) * size],
         )
 
@@ -955,7 +976,7 @@ MERCHANT_PRODUCTS_UNIFIED_HTML = (
   </div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>图片</th><th>ASIN</th><th>商品名称</th><th>YP价格</th><th>佣金率</th><th>预计佣金</th><th>评分</th><th>评论数</th><th>Amazon详情</th><th>操作</th></tr></thead>
+      <thead><tr><th>#</th><th>图片</th><th>ASIN</th><th>商品名称</th><th class="th-sort" onclick="sortBy('price')">YP价格 <span id="sort-price" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('commission')">佣金率 <span id="sort-commission" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('earn')">预计佣金 <span id="sort-earn" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('rating')">评分 <span id="sort-rating" class="sort-icon"></span></th><th>评论数</th><th>Amazon详情</th><th>操作</th></tr></thead>
       <tbody id="tblBody"><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
     </table>
   </div>
@@ -966,8 +987,31 @@ MERCHANT_PRODUCTS_UNIFIED_HTML = (
     + _PAGER_JS_DARK
     + """
 const mid = new URLSearchParams(location.search).get('merchant_id') || '';
-let curPage=1, curSearch='', curTotal=0, curPages=1;
+let curPage=1, curSearch='', curTotal=0, curPages=1, curSort='earn_desc';
 const PAGE_SIZE=50;
+// 排序相关
+const sortMap = {
+  'price': {asc: 'price_asc', desc: 'price_desc'},
+  'commission': {asc: 'commission_asc', desc: 'commission_desc'},
+  'earn': {asc: 'earn_asc', desc: 'earn_desc'},
+  'rating': {asc: 'rating_asc', desc: 'rating_desc'}
+};
+function updateSortIcons(){
+  document.querySelectorAll('.sort-icon').forEach(el=>el.textContent='');
+  const [field, dir] = curSort.split('_');
+  const icon = document.getElementById('sort-'+field);
+  if(icon) icon.textContent = dir==='desc'?' ▼':' ▲';
+}
+function sortBy(field){
+  const [curField, curDir] = curSort.split('_');
+  if(curField===field){
+    curSort = field + '_' + (curDir==='desc'?'asc':'desc');
+  }else{
+    curSort = field + '_desc';
+  }
+  curPage=1;
+  loadTable();
+}
 function starsHtml(r){const n=parseFloat(r)||0;const full=Math.floor(n),half=n-full>=.5?1:0;let s='';for(let i=0;i<full;i++)s+='★';if(half)s+='½';return '<span style="color:#ffa726">'+s+'</span> <span style="color:#888;font-size:.8rem">'+( n||'')+'</span>';}
 function loadMerchantInfo(data){const m=data.merchant||{};document.getElementById('pageTitle').textContent=m.merchant_name||'商户商品';document.getElementById('pageSub').textContent='商户ID: '+(m.merchant_id||mid)+'  ·  佣金: $'+parseFloat(m.avg_payout||0).toFixed(2)+'/次  ·  Cookie: '+(m.cookie_days||'-')+'天  ·  共 '+data.total.toLocaleString()+' 件商品';}
 function htmlEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
@@ -993,7 +1037,7 @@ function renderBody(items){
 }
 function loadTable(){
   document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="loading">加载中...</td></tr>';
-  let url='/api/merchant_products?merchant_id='+encodeURIComponent(mid)+'&page='+curPage+'&size='+PAGE_SIZE;
+  let url='/api/merchant_products?merchant_id='+encodeURIComponent(mid)+'&page='+curPage+'&size='+PAGE_SIZE+'&sort='+curSort;
   if(curSearch) url+='&q='+encodeURIComponent(curSearch);
   fetch(url).then(r=>r.json()).then(data=>{
     try{
@@ -1001,6 +1045,7 @@ function loadTable(){
       loadMerchantInfo(data);curTotal=data.total;curPages=data.pages;
       document.getElementById('totalCount').textContent='共 '+data.total.toLocaleString()+' 件商品';
       renderBody(data.items);renderPager('pager',curPage,curPages,curTotal,PAGE_SIZE,'goPage');
+      updateSortIcons();
     }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">渲染错误: '+e.message+'</td></tr>';}
   }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">加载失败: '+e+'</td></tr>';});
 }

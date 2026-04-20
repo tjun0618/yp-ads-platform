@@ -172,6 +172,9 @@ input, select, button { font-family: inherit; }
 .tbl-wrap { background: #1a1d24; border: 1px solid #2a2d36; border-radius: 10px; overflow: hidden; }
 table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 thead th { background: #15181f; color: #888; font-weight: 600; padding: 12px 14px; text-align: left; font-size: .78rem; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+.th-sort { cursor: pointer; user-select: none; transition: color .15s; }
+.th-sort:hover { color: #2196f3; }
+.sort-icon { font-size: .7rem; color: #2196f3; }
 tbody tr { border-top: 1px solid #23262f; }
 tbody tr:hover { background: #1e2129; }
 td { padding: 10px 14px; vertical-align: middle; }
