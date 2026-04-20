@@ -40,6 +40,8 @@ DB_CONFIG = dict(
     charset="utf8mb4",
 )
 CHROME_WS = "http://127.0.0.1:9222"  # Chrome 调试端口（使用 127.0.0.1 避免 IPv6 问题）
+CHROME_DEBUG_PORT = 9222
+CHROME_USER_DATA = "C:\\Chrome_Debug"
 PAGE_TIMEOUT = 25000  # ms，页面加载超时
 NAV_DELAY = 2.5  # 秒，导航后等待
 RETRY_LIMIT = 2  # 失败重试次数
@@ -51,6 +53,72 @@ CN_ZIPCODE = "100000"  # 北京邮编，用于切换配送地址到中国
 _BASE_DIR = Path(os.path.abspath(__file__)).parent
 STOP_FILE = _BASE_DIR / ".scrape_stop"  # 存在 → 优雅停止
 PROGRESS_FILE = _BASE_DIR / ".scrape_progress"  # 实时写入进度（供 UI 读取）
+
+
+def _start_chrome_debug():
+    """启动 Chrome 调试模式"""
+    import subprocess
+    import time
+
+    # Chrome 路径
+    chrome_paths = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+    ]
+    chrome_exe = None
+    for p in chrome_paths:
+        if os.path.exists(p):
+            chrome_exe = p
+            break
+
+    if not chrome_exe:
+        print("[ERROR] 未找到 Chrome 浏览器")
+        return False
+
+    print(f"[INFO] 启动 Chrome 调试模式: {chrome_exe}")
+
+    # 启动 Chrome
+    subprocess.Popen(
+        [
+            chrome_exe,
+            f"--remote-debugging-port={CHROME_DEBUG_PORT}",
+            f"--user-data-dir={CHROME_USER_DATA}",
+            "--no-first-run",
+            "about:blank",
+        ],
+        shell=False,
+    )
+
+    # 等待 Chrome 启动
+    print("[INFO] 等待 Chrome 启动...")
+    for i in range(10):
+        time.sleep(1)
+        try:
+            import urllib.request
+
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{CHROME_DEBUG_PORT}/json/version", timeout=2
+            )
+            print(f"[OK] Chrome 调试模式已启动 (等待 {i + 1} 秒)")
+            return True
+        except:
+            pass
+
+    print("[ERROR] Chrome 调试模式启动超时")
+    return False
+
+
+def _check_chrome_debug() -> bool:
+    """检查 Chrome 调试模式是否运行"""
+    try:
+        import urllib.request
+
+        urllib.request.urlopen(
+            f"http://127.0.0.1:{CHROME_DEBUG_PORT}/json/version", timeout=2
+        )
+        return True
+    except:
+        return False
 
 
 def _should_stop() -> bool:
@@ -811,14 +879,20 @@ def main():
         return
 
     # ── 连接 Chrome ──────────────────────────────────────────────────
+    # 先检查 Chrome 调试模式是否运行，没有则自动启动
+    if not _check_chrome_debug():
+        print("[INFO] Chrome 调试模式未运行，正在自动启动...")
+        if not _start_chrome_debug():
+            print("[ERROR] 无法启动 Chrome 调试模式")
+            db.close()
+            return
+
     with sync_playwright() as pw:
         try:
             browser = pw.chromium.connect_over_cdp(CHROME_WS)
         except Exception as e:
             print(f"[ERROR] Cannot connect to Chrome debug port {CHROME_WS}: {e}")
-            print(
-                "  Please start debug Chrome: double-click [startup_debug_chrome.bat]"
-            )
+            print("  Please start debug Chrome manually")
             db.close()
             return
 
