@@ -1,24 +1,19 @@
 Option Explicit
 
-Dim WshShell, FSO, ProjectDir, oExec, sOut, pids, pid
+Dim WshShell, FSO, ProjectDir, oExec, sOut, pid
+Dim lines, line, parts
 
 Set WshShell = CreateObject("WScript.Shell")
 Set FSO      = CreateObject("Scripting.FileSystemObject")
 
 ProjectDir = FSO.GetParentFolderName(WScript.ScriptFullName)
-
-' 切换到项目目录
 WshShell.CurrentDirectory = ProjectDir
 
-' ========================================
-' Step 1: 关闭所有监听 5055 端口的进程
-' ========================================
+' Step 1: Kill processes on port 5055
 Set oExec = WshShell.Exec("cmd /c netstat -ano | findstr :5055 | findstr LISTENING")
 sOut = oExec.StdOut.ReadAll
 
 If Len(sOut) > 0 Then
-    ' 解析输出，提取 PID（最后一列）
-    Dim lines, line, parts
     lines = Split(sOut, vbCrLf)
     For Each line In lines
         If Len(Trim(line)) > 0 Then
@@ -35,16 +30,12 @@ If Len(sOut) > 0 Then
     Next
 End If
 
-' ========================================
-' Step 2: 关闭所有 Python 进程
-' ========================================
+' Step 2: Kill all Python processes
 On Error Resume Next
 WshShell.Run "taskkill /F /IM python.exe", 0, True
 On Error GoTo 0
 
-' ========================================
-' Step 3: 删除 Python 缓存
-' ========================================
+' Step 3: Delete Python cache
 Dim PyCacheDir
 PyCacheDir = ProjectDir & "\__pycache__"
 If FSO.FolderExists(PyCacheDir) Then
@@ -53,21 +44,15 @@ If FSO.FolderExists(PyCacheDir) Then
     On Error GoTo 0
 End If
 
-' ========================================
-' Step 4: 等待端口释放
-' ========================================
+' Step 4: Wait for port release
 WScript.Sleep 2000
 
-' ========================================
-' Step 5: 启动服务
-' ========================================
+' Step 5: Start Flask service
 WshShell.Run "cmd.exe /k python -X utf8 ads_manager.py", 1, False
 
-' 等待服务启动
+' Step 6: Wait and open browser
 WScript.Sleep 8000
-
-' 打开浏览器
-WshShell.Run "http://localhost:5055/launcher"
+WshShell.Run "cmd /c start http://127.0.0.1:5055/", 0, False
 
 Set WshShell = Nothing
 Set FSO      = Nothing

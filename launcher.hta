@@ -57,27 +57,41 @@ function startService() {
   
   shell.CurrentDirectory = scriptPath;
   
-  // 关闭旧进程
   document.getElementById('status').innerHTML = 'Closing old processes...';
   
-  // 通过端口 5055 查找并关闭进程
+  // Kill processes on port 5055
   try {
     var cmd = 'cmd /c "for /f "tokens=5" %a in (\'netstat -ano ^| findstr :5055 ^| findstr LISTENING\') do taskkill /F /PID %a"';
     shell.Run(cmd, 0, true);
   } catch(e) {}
   
-  // 等待端口释放
-  WScript.Sleep(2000);
+  // Kill all Python processes
+  try {
+    shell.Run('taskkill /F /IM python.exe', 0, true);
+  } catch(e) {}
   
-  // 启动新服务
+  // Wait for port release
+  var start = new Date().getTime();
+  while (new Date().getTime() - start < 2000);
+  
+  // Start new service
+  document.getElementById('status').innerHTML = 'Starting service...';
   shell.Run('cmd /c start "YP Ads Platform" python -X utf8 ads_manager.py', 1, false);
   
-  document.getElementById('status').innerHTML = 'Service starting... Please wait a few seconds and click "Open Browser"';
+  // Wait for service to start (8 seconds)
+  start = new Date().getTime();
+  while (new Date().getTime() - start < 8000);
+  
+  // Auto open browser
+  document.getElementById('status').innerHTML = 'Opening browser...';
+  shell.Run('cmd /c start http://127.0.0.1:5055/', 0, false);
+  
+  document.getElementById('status').innerHTML = 'Service started! Browser opened.';
 }
 
 function openBrowser() {
   var shell = new ActiveXObject("WScript.Shell");
-  shell.Run('http://localhost:5055');
+  shell.Run('cmd /c start http://127.0.0.1:5055/');
 }
 </script>
 </body>

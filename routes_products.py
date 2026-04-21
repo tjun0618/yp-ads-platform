@@ -724,11 +724,12 @@ def product_list():
 
     # ─── 排序 ─────────────────────────────────────────────────────────────
     # rating_desc 需要 JOIN amazon，特殊处理：改为子查询取值
+    # 注意：yp_us_products 表没有 price_num 字段，需要用 CAST 转换
     sort_map = {
-        "commission_desc": "p.commission_num DESC",
-        "commission_asc": "p.commission_num ASC",
-        "price_desc": "p.price_num DESC",
-        "price_asc": "p.price_num ASC",
+        "commission_desc": "commission_num DESC",
+        "commission_asc": "commission_num ASC",
+        "price_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) DESC",
+        "price_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) ASC",
         "rating_desc": "product_id DESC",  # 简化：暂用 product_id 替代
         "newest": "product_id DESC",
     }
@@ -772,7 +773,7 @@ def product_list():
             SELECT p.asin, p.yp_merchant_id
             FROM yp_us_products p
             {where_sql}
-            ORDER BY p.{order_sql}
+            ORDER BY {order_sql}
             LIMIT %s OFFSET %s
         ) sub
         JOIN yp_us_products p ON p.asin = sub.asin
