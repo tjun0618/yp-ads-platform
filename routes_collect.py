@@ -3483,7 +3483,6 @@ def api_generate_product_report(asin):
             SELECT keyword 
             FROM ads_merchant_keywords 
             WHERE merchant_id = %s OR merchant_name = %s
-            LIMIT 30
         """,
             (str(merchant_id) if merchant_id else "", merchant_name),
         )
@@ -3624,7 +3623,7 @@ def api_generate_product_report(asin):
 
         # 谷歌联想词（使用品牌关键词）
         doc_lines.append(f"#谷歌联想词")
-        for kw in brand_keywords[:5]:
+        for kw in brand_keywords:  # 显示所有关键词，不再限制为 5 个
             doc_lines.append(f"- {kw}")
         doc_lines.append("")
 
