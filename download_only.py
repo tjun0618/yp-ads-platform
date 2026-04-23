@@ -636,15 +636,14 @@ def main():
     final_count = get_db_product_count(db_conn)
     log("MAIN", f"MySQL yp_products 最终总数: {final_count:,} 条")
 
-    # 自动增量同步缓存表
-    if total_added > 0:
-        try:
-            log("MAIN", "正在同步 yp_us_products 缓存表...")
-            from build_us_cache import incremental_refresh
+    # 自动增量同步缓存表（无论新增还是删除都需要同步）
+    try:
+        log("MAIN", "正在同步 yp_us_products 缓存表...")
+        from build_us_cache import incremental_refresh
 
-            incremental_refresh()
-        except Exception as e:
-            log("MAIN", f"缓存表同步失败（不影响采集结果）: {e}")
+        incremental_refresh()
+    except Exception as e:
+        log("MAIN", f"缓存表同步失败（不影响采集结果）: {e}")
 
     db_conn.close()
 

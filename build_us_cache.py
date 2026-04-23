@@ -167,14 +167,26 @@ def full_rebuild():
 
 # ─── 增量同步 ──────────────────────────────────────────────────────────────
 def incremental_refresh():
-    """只同步 yp_products 中有但 yp_us_products 中没有/有变更的 ASIN"""
+    """同步 yp_products 和 yp_us_products：
+    1. 新增：yp_products 有但 yp_us_products 没有
+    2. 更新：yp_products 中的数据变更
+    3. 删除：yp_us_products 有但 yp_products 没有（商品已下架）
+    """
     conn = get_conn()
     cur = conn.cursor()
     t0 = time.time()
 
     ensure_table(cur)
 
-    # 找出 yp_products 中存在但 yp_us_products 中不存在的 ASIN（新增商品）
+    # 1. 删除已下架商品（yp_us_products 有但 yp_products 没有）
+    cur.execute("""
+        DELETE u FROM yp_us_products u
+        LEFT JOIN yp_products p ON u.asin = p.asin
+        WHERE p.asin IS NULL
+    """)
+    deleted_rows = cur.rowcount
+
+    # 2. 新增商品（yp_products 有但 yp_us_products 没有）
     cur.execute("""
         INSERT IGNORE INTO yp_us_products
             (product_id, asin, product_name, price, commission, commission_num,
@@ -198,7 +210,7 @@ def incremental_refresh():
     """)
     new_rows = cur.rowcount
 
-    # 更新已有记录的商品名、价格、佣金（yp_products 数据可能被更新过）
+    # 3. 更新已有记录的商品名、价格、佣金（yp_products 数据可能被更新过）
     cur.execute("""
         UPDATE yp_us_products u
         JOIN yp_products p ON u.asin = p.asin
@@ -214,7 +226,7 @@ def incremental_refresh():
     """)
     updated_rows = cur.rowcount
 
-    # 补充商户信息（website, avg_payout 等，从 yp_merchants 更新）
+    # 4. 补充商户信息（website, avg_payout 等，从 yp_merchants 更新）
     cur.execute("""
         UPDATE yp_us_products u
         JOIN (
@@ -247,9 +259,9 @@ def incremental_refresh():
 
     elapsed = time.time() - t0
     print(
-        f"[cache refresh] new={new_rows} updated={updated_rows} merchants={merchant_updated} total={total} ({elapsed:.1f}s)"
+        f"[cache refresh] deleted={deleted_rows} new={new_rows} updated={updated_rows} merchants={merchant_updated} total={total} ({elapsed:.1f}s)"
     )
-    return new_rows + updated_rows
+    return new_rows + updated_rows + deleted_rows
 
 
 # ─── 入口 ──────────────────────────────────────────────────────────────────
