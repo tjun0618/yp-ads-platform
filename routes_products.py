@@ -707,15 +707,19 @@ def product_list():
 
     if price_min:
         try:
-            # 用 price_num（DECIMAL 索引列）代替 CAST(varchar price)，避免全表扫描
-            where_clauses.append("p.price_num >= %s")
+            # yp_us_products 没有 price_num 字段，使用 CAST 转换
+            where_clauses.append(
+                "CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) >= %s"
+            )
             params.append(float(price_min))
         except ValueError:
             pass
 
     if price_max:
         try:
-            where_clauses.append("p.price_num <= %s")
+            where_clauses.append(
+                "CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) <= %s"
+            )
             params.append(float(price_max))
         except ValueError:
             pass
@@ -725,11 +729,14 @@ def product_list():
     # ─── 排序 ─────────────────────────────────────────────────────────────
     # rating_desc 需要 JOIN amazon，特殊处理：改为子查询取值
     # 注意：yp_us_products 表没有 price_num 字段，需要用 CAST 转换
+    # 预计佣金 = 价格 * 佣金率 / 100
     sort_map = {
         "commission_desc": "commission_num DESC",
         "commission_asc": "commission_num ASC",
         "price_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) DESC",
         "price_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) ASC",
+        "earn_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 DESC",
+        "earn_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 ASC",
         "rating_desc": "product_id DESC",  # 简化：暂用 product_id 替代
         "newest": "product_id DESC",
     }
@@ -768,7 +775,8 @@ def product_list():
             a.title        AS amz_title,
             a.rating, a.review_count, a.main_image_url AS img,
             pl.plan_status, pl.id AS plan_id,
-            COALESCE(mk.kw_count, 0) AS kw_count
+            COALESCE(mk.kw_count, 0) AS kw_count,
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100, 2) AS estimated_earn
         FROM (
             SELECT p.asin, p.yp_merchant_id
             FROM yp_us_products p
@@ -801,6 +809,9 @@ def product_list():
             else (f"${price_raw}" if price_raw else "--")
         )
         comm_raw = str(p["commission"] or "")
+        # 预计佣金 = 价格 * 佣金率 / 100
+        estimated_earn = p.get("estimated_earn")
+        earn_str = f"${estimated_earn:.2f}" if estimated_earn else "--"
         img = p["img"] or ""
         plan_status = p["plan_status"]
         asin = p["asin"]
@@ -878,6 +889,7 @@ def product_list():
           </td>
           <td><b style="color:#e0e0e0">{price_str}</b></td>
           <td><b style="color:#64b5f6">{comm_raw}</b></td>
+          <td><b style="color:#81c784">{earn_str}</b></td>
           <td>{rating_str}<br><small style="color:#888">{review_str} reviews</small></td>
           <td>{plan_badge}</td>
           <td style="white-space:nowrap">
@@ -909,6 +921,8 @@ def product_list():
     # sort options
     sort_labels = [
         ("newest", "最新收录"),
+        ("earn_desc", "预计佣金 高→低"),
+        ("earn_asc", "预计佣金 低→高"),
         ("commission_desc", "佣金率 高→低"),
         ("commission_asc", "佣金率 低→高"),
         ("price_desc", "价格 高→低"),
@@ -987,6 +1001,7 @@ def product_list():
             <th>商品</th>
             <th>价格</th>
             <th>佣金</th>
+            <th>预计佣金</th>
             <th>评分</th>
             <th>广告状态</th>
             <th>操作</th>
