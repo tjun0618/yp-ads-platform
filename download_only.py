@@ -118,9 +118,9 @@ ON DUPLICATE KEY UPDATE
 """
 
 UPSERT_MERCHANT_SQL = """
-INSERT INTO yp_merchants (merchant_id, merchant_name, country)
-VALUES (%s, %s, 'US - United States(US)')
-ON DUPLICATE KEY UPDATE merchant_name = VALUES(merchant_name)
+INSERT INTO yp_merchants (merchant_id, merchant_name, country, status)
+VALUES (%s, %s, 'US - United States(US)', 'APPROVED')
+ON DUPLICATE KEY UPDATE merchant_name = VALUES(merchant_name), status = VALUES(status)
 """
 
 
@@ -580,9 +580,37 @@ def main():
                     # 确保商户记录存在
                     ensure_merchant(db_conn, mid, name)
 
+                    # 增量同步：先删除不在新列表中的商品
+                    new_asins = set(p["asin"] for p in products_this)
+                    cur = db_conn.cursor(dictionary=True)
+                    cur.execute(
+                        "SELECT asin FROM yp_products WHERE merchant_id = %s",
+                        (mid,),
+                    )
+                    existing_asins = set(r["asin"] for r in cur.fetchall())
+
+                    # 找出需要删除的 ASIN（数据库有但新采集没有）
+                    asins_to_delete = existing_asins - new_asins
+                    if asins_to_delete:
+                        delete_count = len(asins_to_delete)
+                        cur.execute(
+                            f"DELETE FROM yp_products WHERE merchant_id = %s AND asin IN ({','.join(['%s'] * delete_count)})",
+                            [mid] + list(asins_to_delete),
+                        )
+                        db_conn.commit()
+                        log("MAIN", f"  删除 {delete_count} 个已下架商品")
+
+                    cur.close()
+
                     n = bulk_upsert_mysql(db_conn, products_this)
                     total_added += n
                     log("MAIN", f"  → MySQL 写入 {n} 条（本次合计: {total_added:,}）")
+
+                    # 显示同步结果
+                    log(
+                        "MAIN",
+                        f"  同步完成: 新增/更新 {n} 条, 删除 {len(asins_to_delete)} 条, 当前 {len(new_asins)} 条",
+                    )
 
                 completed_mids.add(mid)
                 if not single_mid:
