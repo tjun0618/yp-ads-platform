@@ -571,6 +571,24 @@ def main():
                     for p in products_this:
                         p["price"] = _clean_price(p.get("price"))
 
+                    # 检查是否有重复 ASIN
+                    all_asins = [p["asin"] for p in products_this]
+                    unique_asins = set(all_asins)
+                    if len(all_asins) != len(unique_asins):
+                        log(
+                            "MAIN",
+                            f"  注意: Excel 有 {len(all_asins)} 行，但只有 {len(unique_asins)} 个唯一 ASIN",
+                        )
+                        # 去重：只保留每个 ASIN 的第一条记录
+                        seen = set()
+                        products_dedup = []
+                        for p in products_this:
+                            if p["asin"] not in seen:
+                                seen.add(p["asin"])
+                                products_dedup.append(p)
+                        products_this = products_dedup
+                        log("MAIN", f"  去重后: {len(products_this)} 条")
+
                     # MySQL 连接断线自动重连
                     try:
                         db_conn.ping(reconnect=True, attempts=3, delay=2)
