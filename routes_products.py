@@ -847,12 +847,16 @@ def product_list():
             plan_badge = '<span class="badge badge-gray">未制作</span>'
 
         # Amazon 数据状态（用 amz_asin 判断，与筛选条件保持一致）
+        # 商品名称始终使用 YP 平台的 product_name，Amazon 采集只是补充评分/评论等
+        title_show = str(p["product_name"] or "")[:50]
         if p["amz_asin"]:
-            amz_badge = '<span class="badge badge-green">✓ 已采集</span>'
-            title_show = str(p["amz_title"] or p["product_name"] or "")[:50]
+            # 检查是否是 404 标记（商品已下架）
+            if p["amz_title"] == "__404__":
+                amz_badge = '<span class="badge badge-red" title="Amazon 商品已下架">❌ 已下架</span>'
+            else:
+                amz_badge = '<span class="badge badge-green">✓ 已采集</span>'
         else:
             amz_badge = f'<button class="btn btn-warning btn-sm" data-asin="{asin}" onclick="fetchAmazon(this)">采集Amazon</button>'
-            title_show = str(p["product_name"] or "")[:50]
 
         # 品牌关键词状态
         if kw_count > 0:
