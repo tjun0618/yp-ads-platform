@@ -691,20 +691,20 @@ def api_merchant_products():
                 return ""
 
         def _max_bid(ps, cs):
-            """最高出价 = 预计佣金 / 30"""
+            """最高出价 = 预计佣金 / 30 * 7（人民币）"""
             try:
                 earn = float(ps or 0) * float(str(cs or "").rstrip("%")) / 100
-                v = earn / 30
-                return f"${v:.2f}" if v > 0 else ""
+                v = earn / 30 * 7
+                return f"¥{v:.2f}" if v > 0 else ""
             except:
                 return ""
 
         def _min_bid(ps, cs):
-            """最低出价 = 预计佣金 / 50"""
+            """最低出价 = 预计佣金 / 50 * 7（人民币）"""
             try:
                 earn = float(ps or 0) * float(str(cs or "").rstrip("%")) / 100
-                v = earn / 50
-                return f"${v:.2f}" if v > 0 else ""
+                v = earn / 50 * 7
+                return f"¥{v:.2f}" if v > 0 else ""
             except:
                 return ""
 

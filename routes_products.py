@@ -782,8 +782,8 @@ def product_list():
             pl.plan_status, pl.id AS plan_id,
             COALESCE(mk.kw_count, 0) AS kw_count,
             ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100, 2) AS estimated_earn,
-            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 30, 2) AS max_bid,
-            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 50, 2) AS min_bid
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 30 * 7, 2) AS max_bid,
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 50 * 7, 2) AS min_bid
         FROM (
             SELECT p.asin, p.yp_merchant_id
             FROM yp_us_products p
@@ -819,11 +819,11 @@ def product_list():
         # 预计佣金 = 价格 * 佣金率 / 100
         estimated_earn = p.get("estimated_earn")
         earn_str = f"${estimated_earn:.2f}" if estimated_earn else "--"
-        # 最高出价 = 预计佣金 / 30，最低出价 = 预计佣金 / 50
+        # 最高出价 = 预计佣金 / 30 * 7（人民币），最低出价 = 预计佣金 / 50 * 7（人民币）
         max_bid = p.get("max_bid")
-        max_bid_str = f"${max_bid:.2f}" if max_bid else "--"
+        max_bid_str = f"¥{max_bid:.2f}" if max_bid else "--"
         min_bid = p.get("min_bid")
-        min_bid_str = f"${min_bid:.2f}" if min_bid else "--"
+        min_bid_str = f"¥{min_bid:.2f}" if min_bid else "--"
         img = p["img"] or ""
         plan_status = p["plan_status"]
         asin = p["asin"]
