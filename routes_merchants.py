@@ -690,6 +690,24 @@ def api_merchant_products():
             except:
                 return ""
 
+        def _max_bid(ps, cs):
+            """最高出价 = 预计佣金 / 30"""
+            try:
+                earn = float(ps or 0) * float(str(cs or "").rstrip("%")) / 100
+                v = earn / 30
+                return f"${v:.2f}" if v > 0 else ""
+            except:
+                return ""
+
+        def _min_bid(ps, cs):
+            """最低出价 = 预计佣金 / 50"""
+            try:
+                earn = float(ps or 0) * float(str(cs or "").rstrip("%")) / 100
+                v = earn / 50
+                return f"${v:.2f}" if v > 0 else ""
+            except:
+                return ""
+
         def _has_plan(status):
             return status == "completed"
 
@@ -705,6 +723,8 @@ def api_merchant_products():
                     "yp_price": ps,
                     "commission": cs,
                     "earn": _earn(ps, cs),
+                    "max_bid": _max_bid(ps, cs),
+                    "min_bid": _min_bid(ps, cs),
                     "tracking_url": r["tracking_url"] or "",
                     "amazon_url": r["amazon_url"] or "",
                     "scraped_at": str(r["scraped_at"]) if r["scraped_at"] else "",
@@ -976,8 +996,8 @@ MERCHANT_PRODUCTS_UNIFIED_HTML = (
   </div>
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>图片</th><th>ASIN</th><th>商品名称</th><th class="th-sort" onclick="sortBy('price')">YP价格 <span id="sort-price" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('commission')">佣金率 <span id="sort-commission" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('earn')">预计佣金 <span id="sort-earn" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('rating')">评分 <span id="sort-rating" class="sort-icon"></span></th><th>评论数</th><th>Amazon详情</th><th>操作</th></tr></thead>
-      <tbody id="tblBody"><tr><td colspan="11" class="loading">加载中...</td></tr></tbody>
+      <thead><tr><th>#</th><th>图片</th><th>ASIN</th><th>商品名称</th><th class="th-sort" onclick="sortBy('price')">YP价格 <span id="sort-price" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('commission')">佣金率 <span id="sort-commission" class="sort-icon"></span></th><th class="th-sort" onclick="sortBy('earn')">预计佣金 <span id="sort-earn" class="sort-icon"></span></th><th>最高出价</th><th>最低出价</th><th class="th-sort" onclick="sortBy('rating')">评分 <span id="sort-rating" class="sort-icon"></span></th><th>评论数</th><th>Amazon详情</th><th>操作</th></tr></thead>
+      <tbody id="tblBody"><tr><td colspan="13" class="loading">加载中...</td></tr></tbody>
     </table>
   </div>
   <div class="pager" id="pager"></div>
@@ -1017,13 +1037,15 @@ function loadMerchantInfo(data){const m=data.merchant||{};document.getElementByI
 function htmlEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function renderBody(items){
   const body=document.getElementById('tblBody');const offset=(curPage-1)*PAGE_SIZE;
-  if(!items||!items.length){body.innerHTML='<tr><td colspan="11" class="empty">暂无商品</td></tr>';return;}
+  if(!items||!items.length){body.innerHTML='<tr><td colspan="13" class="empty">暂无商品</td></tr>';return;}
   body.innerHTML=items.map((p,i)=>{
     const img=p.image_url?'<img src="'+htmlEsc(p.image_url)+'" style="width:48px;height:48px;object-fit:contain;background:#23262f;border-radius:4px;" onerror="this.hidden=1">'  :'<span style="color:#555;font-size:.75rem">无图</span>';
     const amzBadge=p.has_amazon?'<span class="pill pill-green">已采集</span>':'<span class="pill pill-gray">未采集</span>';
     const nameEsc=htmlEsc(p.product_name);
     const nameShort=(p.product_name||'').length>60?htmlEsc(p.product_name.slice(0,60))+'…':nameEsc||'-';
     const earnHtml=p.earn?'<span style="color:#69f0ae;font-weight:600">'+p.earn+'</span>':'<span style="color:#555">-</span>';
+    const maxBidHtml=p.max_bid?'<span style="color:#ff9800;font-weight:600">'+p.max_bid+'</span>':'<span style="color:#555">-</span>';
+    const minBidHtml=p.min_bid?'<span style="color:#90caf9;font-weight:600">'+p.min_bid+'</span>':'<span style="color:#555">-</span>';
     let adBtn='';
     if(p.has_plan){
       adBtn='<button style="background:#2e7d32;color:#fff;padding:4px 12px;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;" data-asin="'+p.asin+'" onclick="downloadPlan(this.dataset.asin)">下载方案</button>';
@@ -1032,22 +1054,22 @@ function renderBody(items){
     }else{
       adBtn='<button style="background:#e65100;color:#fff;padding:4px 12px;border:none;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;" data-asin="'+p.asin+'" onclick="generateAd(this)" title="建议先采集Amazon数据">制作广告</button>';
     }
-    return '<tr><td class="td-id">'+(offset+i+1)+'</td><td>'+img+'</td><td class="td-id"><a href="https://www.amazon.com/dp/'+p.asin+'" target="_blank" style="color:#64b5f6">'+p.asin+'</a></td><td class="td-name" title="'+nameEsc+'">'+nameShort+'</td><td class="td-num">'+(p.yp_price?'$'+parseFloat(p.yp_price).toFixed(2):'-')+'</td><td class="td-num">'+(p.commission||'-')+'</td><td class="td-num">'+earnHtml+'</td><td>'+starsHtml(p.rating)+'</td><td class="td-num">'+(p.review_count||'-')+'</td><td>'+amzBadge+'</td><td style="white-space:nowrap">'+adBtn+'</td></tr>';
+    return '<tr><td class="td-id">'+(offset+i+1)+'</td><td>'+img+'</td><td class="td-id"><a href="https://www.amazon.com/dp/'+p.asin+'" target="_blank" style="color:#64b5f6">'+p.asin+'</a></td><td class="td-name" title="'+nameEsc+'">'+nameShort+'</td><td class="td-num">'+(p.yp_price?'$'+parseFloat(p.yp_price).toFixed(2):'-')+'</td><td class="td-num">'+(p.commission||'-')+'</td><td class="td-num">'+earnHtml+'</td><td class="td-num">'+maxBidHtml+'</td><td class="td-num">'+minBidHtml+'</td><td>'+starsHtml(p.rating)+'</td><td class="td-num">'+(p.review_count||'-')+'</td><td>'+amzBadge+'</td><td style="white-space:nowrap">'+adBtn+'</td></tr>';
   }).join('');
 }
 function loadTable(){
-  document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="loading">加载中...</td></tr>';
+  document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="loading">加载中...</td></tr>';
   let url='/api/merchant_products?merchant_id='+encodeURIComponent(mid)+'&page='+curPage+'&size='+PAGE_SIZE+'&sort='+curSort;
   if(curSearch) url+='&q='+encodeURIComponent(curSearch);
   fetch(url).then(r=>r.json()).then(data=>{
     try{
-      if(data.error){document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">错误: '+data.error+'</td></tr>';return;}
+      if(data.error){document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">错误: '+data.error+'</td></tr>';return;}
       loadMerchantInfo(data);curTotal=data.total;curPages=data.pages;
       document.getElementById('totalCount').textContent='共 '+data.total.toLocaleString()+' 件商品';
       renderBody(data.items);renderPager('pager',curPage,curPages,curTotal,PAGE_SIZE,'goPage');
       updateSortIcons();
-    }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">渲染错误: '+e.message+'</td></tr>';}
-  }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">加载失败: '+e+'</td></tr>';});
+    }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">渲染错误: '+e.message+'</td></tr>';}
+  }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">加载失败: '+e+'</td></tr>';});
 }
 let searchTimer;
 function onSearch(){clearTimeout(searchTimer);searchTimer=setTimeout(()=>{curSearch=document.getElementById('searchInput').value.trim();curPage=1;loadTable();},300);}
@@ -1185,7 +1207,7 @@ function renderBody(items){
   }).join('');
 }
 function loadTable(){
-  document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="loading">加载中...</td></tr>';
+  document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="loading">加载中...</td></tr>';
   let url='/api/products?category='+encodeURIComponent(curCat)+'&page='+curPage+'&size='+PAGE_SIZE;
   if(curSearch) url+='&q='+encodeURIComponent(curSearch);
   if(curAmz) url+='&has_amazon='+curAmz;
@@ -1193,14 +1215,14 @@ function loadTable(){
   if(curPriceMax) url+='&price_max='+encodeURIComponent(curPriceMax);
   fetch(url).then(r=>r.json()).then(data=>{
     try{
-      if(data.error){document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">错误: '+data.error+'</td></tr>';return;}
+      if(data.error){document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">错误: '+data.error+'</td></tr>';return;}
       if(!catsLoaded&&data.categories&&data.categories.length){loadCategories(data.categories);catsLoaded=true;}
       curTotal=data.total;curPages=data.pages;
       document.getElementById('totalCount').textContent='共 '+data.total.toLocaleString()+' 件';
       renderBody(data.items);
       renderPager('pager',curPage,curPages,curTotal,PAGE_SIZE,'goPage');
-    }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">渲染错误: '+e.message+'</td></tr>';}
-  }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="11" class="empty">加载失败: '+e+'</td></tr>';});
+    }catch(e){console.error('loadTable render error:',e);document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">渲染错误: '+e.message+'</td></tr>';}
+  }).catch(e=>{document.getElementById('tblBody').innerHTML='<tr><td colspan="13" class="empty">加载失败: '+e+'</td></tr>';});
 }
 loadTable();
 </script>

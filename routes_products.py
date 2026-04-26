@@ -730,6 +730,7 @@ def product_list():
     # rating_desc 需要 JOIN amazon，特殊处理：改为子查询取值
     # 注意：yp_us_products 表没有 price_num 字段，需要用 CAST 转换
     # 预计佣金 = 价格 * 佣金率 / 100
+    # 最高出价 = 预计佣金 / 30，最低出价 = 预计佣金 / 50（排序顺序与预计佣金相同）
     sort_map = {
         "commission_desc": "commission_num DESC",
         "commission_asc": "commission_num ASC",
@@ -737,6 +738,10 @@ def product_list():
         "price_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) ASC",
         "earn_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 DESC",
         "earn_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 ASC",
+        "max_bid_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 / 30 DESC",
+        "max_bid_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 / 30 ASC",
+        "min_bid_desc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 / 50 DESC",
+        "min_bid_asc": "CAST(REPLACE(REPLACE(price,'$',''),',','') AS DECIMAL(10,2)) * commission_num / 100 / 50 ASC",
         "rating_desc": "product_id DESC",  # 简化：暂用 product_id 替代
         "newest": "product_id DESC",
     }
@@ -776,7 +781,9 @@ def product_list():
             a.rating, a.review_count, a.main_image_url AS img,
             pl.plan_status, pl.id AS plan_id,
             COALESCE(mk.kw_count, 0) AS kw_count,
-            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100, 2) AS estimated_earn
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100, 2) AS estimated_earn,
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 30, 2) AS max_bid,
+            ROUND(CAST(REPLACE(REPLACE(p.price,'$',''),',','') AS DECIMAL(10,2)) * p.commission_num / 100 / 50, 2) AS min_bid
         FROM (
             SELECT p.asin, p.yp_merchant_id
             FROM yp_us_products p
@@ -812,6 +819,11 @@ def product_list():
         # 预计佣金 = 价格 * 佣金率 / 100
         estimated_earn = p.get("estimated_earn")
         earn_str = f"${estimated_earn:.2f}" if estimated_earn else "--"
+        # 最高出价 = 预计佣金 / 30，最低出价 = 预计佣金 / 50
+        max_bid = p.get("max_bid")
+        max_bid_str = f"${max_bid:.2f}" if max_bid else "--"
+        min_bid = p.get("min_bid")
+        min_bid_str = f"${min_bid:.2f}" if min_bid else "--"
         img = p["img"] or ""
         plan_status = p["plan_status"]
         asin = p["asin"]
@@ -894,6 +906,8 @@ def product_list():
           <td><b style="color:#e0e0e0">{price_str}</b></td>
           <td><b style="color:#64b5f6">{comm_raw}</b></td>
           <td><b style="color:#81c784">{earn_str}</b></td>
+          <td><b style="color:#ff9800">{max_bid_str}</b></td>
+          <td><b style="color:#90caf9">{min_bid_str}</b></td>
           <td>{rating_str}<br><small style="color:#888">{review_str} reviews</small></td>
           <td>{plan_badge}</td>
           <td style="white-space:nowrap">
@@ -927,6 +941,10 @@ def product_list():
         ("newest", "最新收录"),
         ("earn_desc", "预计佣金 高→低"),
         ("earn_asc", "预计佣金 低→高"),
+        ("max_bid_desc", "最高出价 高→低"),
+        ("max_bid_asc", "最高出价 低→高"),
+        ("min_bid_desc", "最低出价 高→低"),
+        ("min_bid_asc", "最低出价 低→高"),
         ("commission_desc", "佣金率 高→低"),
         ("commission_asc", "佣金率 低→高"),
         ("price_desc", "价格 高→低"),
@@ -1006,6 +1024,8 @@ def product_list():
             <th>价格</th>
             <th>佣金</th>
             <th>预计佣金</th>
+            <th>最高出价</th>
+            <th>最低出价</th>
             <th>评分</th>
             <th>广告状态</th>
             <th>操作</th>
