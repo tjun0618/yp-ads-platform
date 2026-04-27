@@ -2,12 +2,34 @@
 # 从 ads_manager.py 行 5890-8862 提取
 import json, os, sys, io, csv, uuid, re, time as _time, requests, threading, subprocess, datetime
 from pathlib import Path
-from flask import (Blueprint, render_template_string, jsonify, request,
-                   redirect, url_for, send_file, Response, current_app)
+from flask import (
+    Blueprint,
+    render_template_string,
+    jsonify,
+    request,
+    redirect,
+    url_for,
+    send_file,
+    Response,
+    current_app,
+)
 from urllib.parse import quote
-from app_config import (DB, BASE_DIR, OUTPUT_DIR,
-                    YP_SYNC_SCRIPT, YP_SYNC_STATE, YP_SYNC_LOG)
-from db import get_db, _db, _cached_count, _count_cache, _parse_report_column, _clean_numeric_value
+from app_config import (
+    DB,
+    BASE_DIR,
+    OUTPUT_DIR,
+    YP_SYNC_SCRIPT,
+    YP_SYNC_STATE,
+    YP_SYNC_LOG,
+)
+from db import (
+    get_db,
+    _db,
+    _cached_count,
+    _count_cache,
+    _parse_report_column,
+    _clean_numeric_value,
+)
 from templates_shared import BASE_CSS, NAV_HTML, _BASE_STYLE_DARK, _SCRAPE_TOPNAV
 
 bp = Blueprint("analytics", __name__)
@@ -15,6 +37,7 @@ bp = Blueprint("analytics", __name__)
 # 全局状态
 optimized_uploads = {}
 _yp_sync_proc = None
+
 
 @bp.route("/api/optimize/upload", methods=["POST"])
 def api_optimize_upload():
@@ -421,6 +444,224 @@ def api_optimize_analyze(upload_id):
 
     except Exception as e:
         return jsonify({"ok": False, "msg": f"分析失败: {str(e)}"})
+
+
+@bp.route("/api/optimize/upload_excel", methods=["POST"])
+def api_optimize_upload_excel():
+    """上传Excel报告文件并解析"""
+    try:
+        if "file" not in request.files:
+            return jsonify({"success": False, "error": "未上传文件"})
+
+        file = request.files["file"]
+        report_type = request.form.get("report_type", "keywords")
+        merchant_id = request.form.get("merchant_id", "")
+        start_date = request.form.get("start_date", "")
+        end_date = request.form.get("end_date", "")
+
+        if not file or file.filename == "":
+            return jsonify({"success": False, "error": "文件为空"})
+
+        if not merchant_id:
+            return jsonify({"success": False, "error": "请选择品牌"})
+
+        # 解析Excel
+        rows = []
+        filename = file.filename.lower()
+
+        if filename.endswith((".xlsx", ".xls")):
+            try:
+                import openpyxl
+
+                file.seek(0)
+                wb = openpyxl.load_workbook(file)
+                ws = wb.active
+
+                # 读取表头
+                headers = [
+                    str(cell.value).strip() if cell.value else "" for cell in ws[1]
+                ]
+
+                # 读取数据行
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    row_dict = {}
+                    for idx, val in enumerate(row):
+                        if idx < len(headers) and headers[idx]:
+                            row_dict[headers[idx]] = val
+                    if row_dict:
+                        rows.append(row_dict)
+
+            except Exception as e:
+                return jsonify({"success": False, "error": f"Excel解析错误: {e}"})
+        else:
+            return jsonify({"success": False, "error": "仅支持Excel文件"})
+
+        if not rows:
+            return jsonify({"success": False, "error": "文件中没有数据"})
+
+        # 根据报告类型处理数据
+        data = []
+        for row in rows:
+            if report_type == "keywords":
+                # 搜索关键字报告
+                data.append(
+                    {
+                        "keyword": row.get("Keyword")
+                        or row.get("关键字")
+                        or row.get("Search keyword")
+                        or "",
+                        "match_type": row.get("Match type")
+                        or row.get("匹配类型")
+                        or "",
+                        "campaign": row.get("Campaign") or row.get("广告系列") or "",
+                        "ad_group": row.get("Ad group") or row.get("广告组") or "",
+                        "impressions": int(
+                            float(row.get("Impr.") or row.get("展示次数") or 0)
+                        ),
+                        "clicks": int(
+                            float(row.get("Clicks") or row.get("点击次数") or 0)
+                        ),
+                        "ctr": float(
+                            str(row.get("CTR") or row.get("点击率") or "0").replace(
+                                "%", ""
+                            )
+                        )
+                        / 100,
+                        "cpc": float(row.get("Avg. CPC") or row.get("平均CPC") or 0),
+                        "cost": float(row.get("Cost") or row.get("花费") or 0),
+                        "conversions": int(
+                            float(row.get("Conversions") or row.get("转化") or 0)
+                        ),
+                    }
+                )
+            elif report_type == "search_terms":
+                # 搜索字词报告
+                data.append(
+                    {
+                        "search_term": row.get("Search term")
+                        or row.get("搜索词")
+                        or row.get("Search query")
+                        or "",
+                        "keyword": row.get("Keyword") or row.get("关键字") or "",
+                        "match_type": row.get("Match type")
+                        or row.get("匹配类型")
+                        or "",
+                        "campaign": row.get("Campaign") or row.get("广告系列") or "",
+                        "ad_group": row.get("Ad group") or row.get("广告组") or "",
+                        "impressions": int(
+                            float(row.get("Impr.") or row.get("展示次数") or 0)
+                        ),
+                        "clicks": int(
+                            float(row.get("Clicks") or row.get("点击次数") or 0)
+                        ),
+                        "ctr": float(
+                            str(row.get("CTR") or row.get("点击率") or "0").replace(
+                                "%", ""
+                            )
+                        )
+                        / 100,
+                        "cpc": float(row.get("Avg. CPC") or row.get("平均CPC") or 0),
+                        "cost": float(row.get("Cost") or row.get("花费") or 0),
+                        "conversions": int(
+                            float(row.get("Conversions") or row.get("转化") or 0)
+                        ),
+                    }
+                )
+
+        # 调用投放数据API保存
+        from routes_products import api_workflow_ads_data
+
+        # 构造请求对象
+        class FakeRequest:
+            def get_json(self, silent=False):
+                return {
+                    "report_type": report_type,
+                    "report_date": end_date,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "data": data,
+                }
+
+        # 直接保存到数据库
+        conn = get_db()
+        cur = conn.cursor()
+
+        saved = 0
+        if report_type == "keywords":
+            for row in data:
+                if not row.get("keyword"):
+                    continue
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO ads_keywords_report
+                        (merchant_id, report_date, keyword, match_type, campaign, ad_group,
+                         impressions, clicks, ctr, cpc, cost, conversions)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                        (
+                            merchant_id,
+                            end_date,
+                            row.get("keyword", ""),
+                            row.get("match_type", ""),
+                            row.get("campaign", ""),
+                            row.get("ad_group", ""),
+                            row.get("impressions", 0),
+                            row.get("clicks", 0),
+                            row.get("ctr", 0),
+                            row.get("cpc", 0),
+                            row.get("cost", 0),
+                            row.get("conversions", 0),
+                        ),
+                    )
+                    saved += 1
+                except Exception as e:
+                    print(f"[ERROR] 保存关键字失败: {e}")
+        elif report_type == "search_terms":
+            for row in data:
+                if not row.get("search_term"):
+                    continue
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO ads_search_terms_report
+                        (merchant_id, report_date, search_term, keyword, match_type, campaign, ad_group,
+                         impressions, clicks, ctr, cpc, cost, conversions)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                        (
+                            merchant_id,
+                            end_date,
+                            row.get("search_term", ""),
+                            row.get("keyword", ""),
+                            row.get("match_type", ""),
+                            row.get("campaign", ""),
+                            row.get("ad_group", ""),
+                            row.get("impressions", 0),
+                            row.get("clicks", 0),
+                            row.get("ctr", 0),
+                            row.get("cpc", 0),
+                            row.get("cost", 0),
+                            row.get("conversions", 0),
+                        ),
+                    )
+                    saved += 1
+                except Exception as e:
+                    print(f"[ERROR] 保存搜索词失败: {e}")
+
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        return jsonify(
+            {"success": True, "saved_count": saved, "message": f"已保存 {saved} 条数据"}
+        )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
 
 
 # ─── 广告优化模块（T-004: 数据查询API）────────────────────────────────────
@@ -1168,73 +1409,223 @@ OPTIMIZE_HTML = (
 <body>
 """
     + NAV_HTML.format(
-        p0="", p1="", p2="", p3="", p4="", p5="", p6="active", p7="", p8="", p9="", p10="", p11=""
+        p0="",
+        p1="",
+        p2="",
+        p3="",
+        p4="",
+        p5="",
+        p6="active",
+        p7="",
+        p8="",
+        p9="",
+        p10="",
+        p11="",
     )
     + """
 <div class="container">
   <h1 style="font-size: 20px; margin-bottom: 20px;">📈 投放优化</h1>
   
   <div class="tab-nav">
-    <button class="active" onclick="switchTab(0)">📤 上传报告</button>
-    <button onclick="switchTab(1)">💡 优化建议</button>
-    <button onclick="switchTab(2)">📊 KPI 仪表盘</button>
+    <button class="active" onclick="switchTab(0)">📤 数据上传</button>
+    <button onclick="switchTab(1)">📊 ROI 分析</button>
+    <button onclick="switchTab(2)">💡 优化建议</button>
+    <button onclick="switchTab(3)">🎯 KPI 目标</button>
   </div>
   
-  <!-- Tab 1: 上传报告 -->
+  <!-- Tab 0: 数据上传 -->
   <div class="tab-content active" id="tab-upload">
+    <!-- 核心数据上传区 -->
     <div class="card">
-      <h2>上传广告报告</h2>
-      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
-        <div class="upload-icon">📁</div>
-        <div class="upload-text">点击或拖拽上传报告文件</div>
-        <div class="upload-hint">支持 .csv, .xlsx, .xls 格式</div>
-        <input type="file" id="file-input" style="display:none" accept=".csv,.xlsx,.xls" onchange="handleFileSelect(event)">
-      </div>
-      <div id="file-preview" style="display:none"></div>
+      <h2>🔑 核心数据 <span style="font-size:12px;color:#888;font-weight:normal">（每1-2周上传一次）</span></h2>
+      <p style="color:#888;font-size:13px;margin-bottom:20px;">
+        上传以下4项数据即可生成完整的优化报告。建议固定周期上传，追踪效果趋势。
+      </p>
       
-      <div class="form-row" style="margin-top: 20px;">
-        <div class="form-group">
-          <label>ASIN (可选)</label>
-          <input type="text" id="asin-input" placeholder="留空则自动匹配">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;">
+        <!-- 1. 搜索关键字报告 -->
+        <div class="upload-card" style="background:#1a1d24;border:1px solid #2a2d36;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <span style="font-size:24px;">📊</span>
+            <div>
+              <div style="font-weight:600;color:#fff;">搜索关键字报告</div>
+              <div style="font-size:12px;color:#888;">Google Ads → 报告 → 搜索关键字</div>
+            </div>
+          </div>
+          <div class="upload-zone-sm" id="zone-keywords" onclick="triggerUpload('keywords')" style="border:2px dashed #2a2d36;border-radius:8px;padding:20px;text-align:center;cursor:pointer;">
+            <div style="color:#888;font-size:13px;">点击上传 .xlsx/.csv</div>
+          </div>
+          <input type="file" id="file-keywords" style="display:none" accept=".xlsx,.xls,.csv" onchange="handleReportUpload('keywords', event)">
+          <div id="status-keywords" style="margin-top:10px;font-size:12px;color:#888;"></div>
         </div>
+        
+        <!-- 2. 搜索字词报告 -->
+        <div class="upload-card" style="background:#1a1d24;border:1px solid #2a2d36;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <span style="font-size:24px;">🔍</span>
+            <div>
+              <div style="font-weight:600;color:#fff;">搜索字词报告</div>
+              <div style="font-size:12px;color:#888;">Google Ads → 报告 → 搜索字词</div>
+            </div>
+          </div>
+          <div class="upload-zone-sm" id="zone-search_terms" onclick="triggerUpload('search_terms')" style="border:2px dashed #2a2d36;border-radius:8px;padding:20px;text-align:center;cursor:pointer;">
+            <div style="color:#888;font-size:13px;">点击上传 .xlsx/.csv</div>
+          </div>
+          <input type="file" id="file-search_terms" style="display:none" accept=".xlsx,.xls,.csv" onchange="handleReportUpload('search_terms', event)">
+          <div id="status-search_terms" style="margin-top:10px;font-size:12px;color:#888;"></div>
+        </div>
+        
+        <!-- 3. YP品牌报表 -->
+        <div class="upload-card" style="background:#1a1d24;border:1px solid #2a2d36;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <span style="font-size:24px;">💰</span>
+            <div>
+              <div style="font-weight:600;color:#fff;">YP品牌报表</div>
+              <div style="font-size:12px;color:#888;">YP后台截图或手动输入</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px;">
+            <div>
+              <label style="font-size:11px;color:#888;">点击数</label>
+              <input type="number" id="yp-clicks" style="width:100%;padding:8px;border-radius:6px;border:1px solid #2a2d36;background:#15181f;color:#fff;" placeholder="0">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#888;">加购数</label>
+              <input type="number" id="yp-add_to_carts" style="width:100%;padding:8px;border-radius:6px;border:1px solid #2a2d36;background:#15181f;color:#fff;" placeholder="0">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#888;">购买数</label>
+              <input type="number" id="yp-purchases" style="width:100%;padding:8px;border-radius:6px;border:1px solid #2a2d36;background:#15181f;color:#fff;" placeholder="0">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#888;">佣金($)</label>
+              <input type="number" id="yp-commission" step="0.01" style="width:100%;padding:8px;border-radius:6px;border:1px solid #2a2d36;background:#15181f;color:#fff;" placeholder="0.00">
+            </div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="saveYpReport()">💾 保存YP数据</button>
+          <div id="status-yp_report" style="margin-top:10px;font-size:12px;color:#888;"></div>
+        </div>
+        
+        <!-- 4. 花费金额 -->
+        <div class="upload-card" style="background:#1a1d24;border:1px solid #2a2d36;border-radius:12px;padding:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <span style="font-size:24px;">💵</span>
+            <div>
+              <div style="font-weight:600;color:#fff;">Google Ads花费</div>
+              <div style="font-size:12px;color:#888;">实际充值/花费金额</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:end;">
+            <div style="flex:1;">
+              <label style="font-size:11px;color:#888;">花费金额 ($)</label>
+              <input type="number" id="cost-amount" step="0.01" style="width:100%;padding:8px;border-radius:6px;border:1px solid #2a2d36;background:#15181f;color:#fff;" placeholder="0.00">
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="saveCostData()">💾 保存</button>
+          </div>
+          <div id="status-cost" style="margin-top:10px;font-size:12px;color:#888;"></div>
+        </div>
+      </div>
+      
+      <!-- 日期范围和品牌选择 -->
+      <div class="form-row" style="margin-top:20px;padding-top:20px;border-top:1px solid #2a2d36;">
         <div class="form-group">
-          <label>报告类型</label>
-          <select id="report-type">
-            <option value="search_term">Search Term Report</option>
-            <option value="keyword">Keyword Performance Report</option>
+          <label>品牌/商户ID</label>
+          <select id="merchant-select" onchange="loadMerchantData()">
+            <option value="">选择品牌...</option>
           </select>
         </div>
+        <div class="form-group">
+          <label>开始日期</label>
+          <input type="date" id="start-date">
+        </div>
+        <div class="form-group">
+          <label>结束日期</label>
+          <input type="date" id="end-date">
+        </div>
+        <div class="form-group" style="display:flex;align-items:end;">
+          <button class="btn btn-success" onclick="calculateROI()" style="width:100%;">📊 计算ROI</button>
+        </div>
       </div>
-      
-      <div style="margin-top: 20px;">
-        <button class="btn btn-primary" id="upload-btn" onclick="uploadFile()">
-          <span>🚀</span> 开始上传并分析
-        </button>
+    </div>
+    
+    <!-- 补充数据上传区 -->
+    <div class="card">
+      <h2>📋 补充数据 <span style="font-size:12px;color:#888;font-weight:normal">（可选，提升分析精度）</span></h2>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+        <div style="background:#15181f;border-radius:8px;padding:16px;">
+          <div style="font-weight:600;margin-bottom:8px;">🖼️ Campaign截图</div>
+          <input type="file" id="file-campaign" accept="image/*,.pdf" style="font-size:12px;" onchange="handleImageUpload('campaign', event)">
+          <div id="status-campaign" style="font-size:11px;color:#888;margin-top:6px;"></div>
+        </div>
+        <div style="background:#15181f;border-radius:8px;padding:16px;">
+          <div style="font-weight:600;margin-bottom:8px;">📈 广告组CTR</div>
+          <input type="file" id="file-ad_group" accept=".xlsx,.xls,.csv" style="font-size:12px;" onchange="handleReportUpload('ad_group', event)">
+          <div id="status-ad_group" style="font-size:11px;color:#888;margin-top:6px;"></div>
+        </div>
+        <div style="background:#15181f;border-radius:8px;padding:16px;">
+          <div style="font-weight:600;margin-bottom:8px;">📝 广告文案数据</div>
+          <input type="file" id="file-ad_copy" accept=".xlsx,.xls,.csv" style="font-size:12px;" onchange="handleReportUpload('ad_copy', event)">
+          <div id="status-ad_copy" style="font-size:11px;color:#888;margin-top:6px;"></div>
+        </div>
       </div>
-      
-      <div id="upload-progress" style="display:none">
-        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
-        <div class="progress-text" id="progress-text">准备上传...</div>
+    </div>
+    
+    <!-- 历史记录 -->
+    <div class="card">
+      <h2>📅 历史数据记录</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>日期范围</th>
+            <th>品牌</th>
+            <th>Google花费</th>
+            <th>YP佣金</th>
+            <th>ROI</th>
+            <th>关键字数</th>
+            <th>搜索词数</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="history-table">
+          <tr><td colspan="8" style="text-align:center;color:#666;padding:40px;">加载中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+  <!-- Tab 1: ROI分析 -->
+  <div class="tab-content" id="tab-roi">
+    <div class="card">
+      <h2>📊 ROI 分析仪表盘</h2>
+      <div id="roi-dashboard">
+        <div class="empty-state">
+          <div class="empty-state-icon">📊</div>
+          <div class="empty-state-title">请先上传数据并计算ROI</div>
+          <div class="empty-state-desc">在"数据上传"页面填写完整数据后点击"计算ROI"</div>
+        </div>
       </div>
     </div>
     
     <div class="card">
-      <h2>历史上传记录</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>上传时间</th>
-            <th>文件名</th>
-            <th>行数</th>
-            <th>状态</th>
-            <th>建议数</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="upload-history">
-          <tr><td colspan="6" style="text-align:center;color:#666;padding:40px;">加载中...</td></tr>
-        </tbody>
-      </table>
+      <h2>📈 关键字效果分析</h2>
+      <div id="keywords-analysis">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔑</div>
+          <div class="empty-state-title">暂无关键字数据</div>
+          <div class="empty-state-desc">上传搜索关键字报告后显示分析结果</div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <h2>🔍 搜索字词分析</h2>
+      <div id="search-terms-analysis">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔍</div>
+          <div class="empty-state-title">暂无搜索字词数据</div>
+          <div class="empty-state-desc">上传搜索字词报告后显示分析结果</div>
+        </div>
+      </div>
     </div>
   </div>
   
@@ -1375,6 +1766,7 @@ OPTIMIZE_HTML = (
 <script>
 let currentFile = null;
 let currentUploadId = null;
+let currentMerchantId = null;
 
 // Tab切换
 function switchTab(index) {
@@ -1384,9 +1776,476 @@ function switchTab(index) {
   document.querySelectorAll('.tab-content').forEach((content, i) => {
     content.classList.toggle('active', i === index);
   });
-  if (index === 0) loadUploadHistory();
-  if (index === 1) loadBatchOptions();
-  if (index === 2) loadKpiData();
+  if (index === 0) loadMerchants();
+  if (index === 1) loadRoiDashboard();
+  if (index === 2) loadBatchOptions();
+  if (index === 3) loadKpiData();
+}
+
+// 初始化
+document.addEventListener('DOMContentLoaded', function() {
+  // 设置默认日期范围
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+  document.getElementById('start-date').value = firstDay.toISOString().slice(0, 10);
+  document.getElementById('end-date').value = today.toISOString().slice(0, 10);
+  
+  // 加载商户列表
+  loadMerchants();
+});
+
+// 加载商户列表
+function loadMerchants() {
+  fetch('/api/merchants?limit=100')
+  .then(r => r.json())
+  .then(data => {
+    const select = document.getElementById('merchant-select');
+    select.innerHTML = '<option value="">选择品牌...</option>';
+    if (data.merchants) {
+      data.merchants.forEach(m => {
+        select.innerHTML += `<option value="${m.merchant_id}">${m.merchant_name || m.merchant_id}</option>`;
+      });
+    }
+  })
+  .catch(e => console.error('加载商户失败:', e));
+}
+
+// 加载商户数据
+function loadMerchantData() {
+  const merchantId = document.getElementById('merchant-select').value;
+  if (!merchantId) return;
+  
+  currentMerchantId = merchantId;
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  
+  // 加载已有数据
+  fetch(`/api/workflow/ads_data/${merchantId}?start_date=${startDate}&end_date=${endDate}`)
+  .then(r => r.json())
+  .then(data => {
+    if (data.success && data.data) {
+      // 更新状态显示
+      if (data.data.summary) {
+        const s = data.data.summary;
+        if (s.google_cost) document.getElementById('cost-amount').value = s.google_cost;
+      }
+      if (data.data.keywords_stats) {
+        const ks = data.data.keywords_stats;
+        document.getElementById('status-keywords').innerHTML = 
+          `<span style="color:#4caf50;">✓ ${ks.keyword_count || 0} 个关键字，花费 $${ks.total_cost || 0}</span>`;
+      }
+      if (data.data.search_terms_stats) {
+        const ts = data.data.search_terms_stats;
+        document.getElementById('status-search_terms').innerHTML = 
+          `<span style="color:#4caf50;">✓ ${ts.term_count || 0} 个搜索词</span>`;
+      }
+    }
+  })
+  .catch(e => console.error('加载商户数据失败:', e));
+}
+
+// 触发文件上传
+function triggerUpload(type) {
+  document.getElementById('file-' + type).click();
+}
+
+// 处理报告上传
+function handleReportUpload(type, event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const merchantId = currentMerchantId || document.getElementById('merchant-select').value;
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  
+  if (!merchantId) {
+    toast('请先选择品牌', 'error');
+    return;
+  }
+  
+  const statusEl = document.getElementById('status-' + type);
+  statusEl.innerHTML = '<span style="color:#ffa726;">⏳ 上传中...</span>';
+  
+  // 读取文件内容
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let data = [];
+    
+    // 解析CSV/Excel
+    if (file.name.endsWith('.csv')) {
+      const lines = e.target.result.split('\\n');
+      const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const values = lines[i].split(',');
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = (values[idx] || '').trim().replace(/"/g, '');
+        });
+        data.push(row);
+      }
+    } else {
+      // Excel需要后端解析
+      statusEl.innerHTML = '<span style="color:#ffa726;">⏳ 解析Excel...</span>';
+      uploadExcelFile(type, file, merchantId, startDate, endDate, statusEl);
+      return;
+    }
+    
+    // 发送到后端
+    submitReportData(type, data, merchantId, startDate, endDate, statusEl);
+  };
+  reader.readAsText(file);
+}
+
+// 上传Excel文件
+function uploadExcelFile(type, file, merchantId, startDate, endDate, statusEl) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('report_type', type);
+  formData.append('merchant_id', merchantId);
+  formData.append('start_date', startDate);
+  formData.append('end_date', endDate);
+  
+  fetch('/api/optimize/upload_excel', {
+    method: 'POST',
+    body: formData
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      statusEl.innerHTML = `<span style="color:#4caf50;">✓ 已保存 ${data.saved_count || 0} 条数据</span>`;
+      toast('上传成功', 'success');
+    } else {
+      statusEl.innerHTML = `<span style="color:#ef5350;">✗ ${data.error || '上传失败'}</span>`;
+    }
+  })
+  .catch(e => {
+    statusEl.innerHTML = `<span style="color:#ef5350;">✗ 上传失败: ${e.message}</span>`;
+  });
+}
+
+// 提交报告数据
+function submitReportData(type, data, merchantId, startDate, endDate, statusEl) {
+  fetch(`/api/workflow/ads_data/${merchantId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      report_type: type,
+      report_date: endDate,
+      start_date: startDate,
+      end_date: endDate,
+      data: data
+    })
+  })
+  .then(r => r.json())
+  .then(result => {
+    if (result.success) {
+      statusEl.innerHTML = `<span style="color:#4caf50;">✓ ${result.message}</span>`;
+      toast('上传成功', 'success');
+    } else {
+      statusEl.innerHTML = `<span style="color:#ef5350;">✗ ${result.error}</span>`;
+    }
+  })
+  .catch(e => {
+    statusEl.innerHTML = `<span style="color:#ef5350;">✗ 上传失败: ${e.message}</span>`;
+  });
+}
+
+// 保存YP报表数据
+function saveYpReport() {
+  const merchantId = currentMerchantId || document.getElementById('merchant-select').value;
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  
+  if (!merchantId) {
+    toast('请先选择品牌', 'error');
+    return;
+  }
+  
+  const ypData = {
+    clicks: parseInt(document.getElementById('yp-clicks').value) || 0,
+    add_to_carts: parseInt(document.getElementById('yp-add_to_carts').value) || 0,
+    purchases: parseInt(document.getElementById('yp-purchases').value) || 0,
+    commission: parseFloat(document.getElementById('yp-commission').value) || 0
+  };
+  
+  const statusEl = document.getElementById('status-yp_report');
+  statusEl.innerHTML = '<span style="color:#ffa726;">⏳ 保存中...</span>';
+  
+  fetch(`/api/workflow/ads_data/${merchantId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      report_type: 'yp_report',
+      start_date: startDate,
+      end_date: endDate,
+      yp_data: ypData
+    })
+  })
+  .then(r => r.json())
+  .then(result => {
+    if (result.success) {
+      statusEl.innerHTML = `<span style="color:#4caf50;">✓ YP数据已保存</span>`;
+      toast('YP数据保存成功', 'success');
+    } else {
+      statusEl.innerHTML = `<span style="color:#ef5350;">✗ ${result.error}</span>`;
+    }
+  })
+  .catch(e => {
+    statusEl.innerHTML = `<span style="color:#ef5350;">✗ 保存失败</span>`;
+  });
+}
+
+// 保存花费金额
+function saveCostData() {
+  const merchantId = currentMerchantId || document.getElementById('merchant-select').value;
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  const costAmount = parseFloat(document.getElementById('cost-amount').value) || 0;
+  
+  if (!merchantId) {
+    toast('请先选择品牌', 'error');
+    return;
+  }
+  
+  const statusEl = document.getElementById('status-cost');
+  statusEl.innerHTML = '<span style="color:#ffa726;">⏳ 保存中...</span>';
+  
+  fetch(`/api/workflow/ads_data/${merchantId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      report_type: 'cost',
+      start_date: startDate,
+      end_date: endDate,
+      cost_amount: costAmount
+    })
+  })
+  .then(r => r.json())
+  .then(result => {
+    if (result.success) {
+      statusEl.innerHTML = `<span style="color:#4caf50;">✓ 花费金额已保存</span>`;
+      toast('花费金额保存成功', 'success');
+    } else {
+      statusEl.innerHTML = `<span style="color:#ef5350;">✗ ${result.error}</span>`;
+    }
+  })
+  .catch(e => {
+    statusEl.innerHTML = `<span style="color:#ef5350;">✗ 保存失败</span>`;
+  });
+}
+
+// 计算ROI
+function calculateROI() {
+  const merchantId = currentMerchantId || document.getElementById('merchant-select').value;
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  
+  if (!merchantId) {
+    toast('请先选择品牌', 'error');
+    return;
+  }
+  
+  showLoading('计算ROI...');
+  
+  fetch(`/api/workflow/ads_data/${merchantId}/roi?start_date=${startDate}&end_date=${endDate}`)
+  .then(r => r.json())
+  .then(result => {
+    hideLoading();
+    if (result.success) {
+      displayRoiResult(result.data);
+      switchTab(1);  // 切换到ROI分析Tab
+      toast('ROI计算完成', 'success');
+    } else {
+      toast(result.error || '计算失败', 'error');
+    }
+  })
+  .catch(e => {
+    hideLoading();
+    toast('计算失败: ' + e.message, 'error');
+  });
+}
+
+// 显示ROI结果
+function displayRoiResult(data) {
+  const summary = data.summary || {};
+  const roi = summary.roi || 0;
+  const roas = summary.roas || 0;
+  const googleCost = summary.google_cost || 0;
+  const ypCommission = summary.yp_commission || 0;
+  
+  const roiStatus = roi >= 0 ? 'good' : 'danger';
+  const roiIcon = roi >= 0 ? '🟢' : '🔴';
+  
+  document.getElementById('roi-dashboard').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card status-${roiStatus}">
+        <div class="kpi-label">ROI</div>
+        <div class="kpi-value ${roiStatus}">${roiIcon} ${(roi * 100).toFixed(1)}%</div>
+        <div class="kpi-target">目标: > 0%</div>
+        <div class="kpi-change">${roi >= 0 ? '盈利' : '亏损'}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">ROAS</div>
+        <div class="kpi-value">${roas.toFixed(2)}x</div>
+        <div class="kpi-target">收入/花费</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Google花费</div>
+        <div class="kpi-value">$${googleCost.toFixed(2)}</div>
+        <div class="kpi-target">广告投入</div>
+      </div>
+      <div class="kpi-card status-${ypCommission > 0 ? 'good' : ''}">
+        <div class="kpi-label">YP佣金</div>
+        <div class="kpi-value ${ypCommission > 0 ? 'good' : ''}">$${ypCommission.toFixed(2)}</div>
+        <div class="kpi-target">佣金收入</div>
+      </div>
+    </div>
+    
+    <div style="margin-top:20px;padding:20px;background:#15181f;border-radius:12px;">
+      <h3 style="font-size:14px;margin-bottom:16px;">📊 分析结论</h3>
+      <div style="font-size:13px;color:#adb5bd;line-height:1.8;">
+        ${generateRoiAnalysis(roi, roas, googleCost, ypCommission, summary)}
+      </div>
+    </div>
+  `;
+  
+  // 加载关键字分析
+  loadKeywordsAnalysis(data.merchant_id || currentMerchantId, data.date_range);
+  loadSearchTermsAnalysis(data.merchant_id || currentMerchantId, data.date_range);
+}
+
+// 生成ROI分析结论
+function generateRoiAnalysis(roi, roas, cost, commission, summary) {
+  let analysis = [];
+  
+  if (roi >= 0.5) {
+    analysis.push('✅ <b>盈利状态良好</b>：ROI超过50%，广告投放效果优秀，建议继续投入。');
+  } else if (roi >= 0) {
+    analysis.push('⚠️ <b>微利状态</b>：ROI为正但较低，建议优化关键词和出价策略。');
+  } else if (roi >= -0.3) {
+    analysis.push('⚠️ <b>小幅亏损</b>：ROI为负但亏损不大，建议检查高花费低转化关键词。');
+  } else {
+    analysis.push('🔴 <b>亏损严重</b>：ROI大幅为负，建议暂停投放并重新评估策略。');
+  }
+  
+  if (cost > 0 && commission === 0) {
+    analysis.push('⚠️ <b>无佣金数据</b>：已记录花费但无佣金收入，请确认YP报表是否上传。');
+  }
+  
+  if (summary.yp_clicks > 0 && summary.yp_purchases === 0) {
+    analysis.push('💡 <b>转化问题</b>：有点击但无购买，检查落地页或产品竞争力。');
+  }
+  
+  return analysis.join('<br>');
+}
+
+// 加载关键字分析
+function loadKeywordsAnalysis(merchantId, dateRange) {
+  if (!merchantId || !dateRange) return;
+  
+  fetch(`/api/workflow/ads_data/${merchantId}/keywords?start_date=${dateRange.start_date}&end_date=${dateRange.end_date}&limit=20`)
+  .then(r => r.json())
+  .then(result => {
+    if (result.success && result.data && result.data.length > 0) {
+      const keywords = result.data;
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>关键字</th>
+              <th>匹配类型</th>
+              <th>点击</th>
+              <th>花费</th>
+              <th>CPC</th>
+              <th>CTR</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      keywords.forEach(kw => {
+        html += `
+          <tr>
+            <td><b>${kw.keyword || '-'}</b></td>
+            <td>${kw.match_type || '-'}</td>
+            <td>${kw.clicks || 0}</td>
+            <td>$${(kw.cost || 0).toFixed(2)}</td>
+            <td>$${(kw.cpc || 0).toFixed(2)}</td>
+            <td>${((kw.ctr || 0) * 100).toFixed(1)}%</td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      document.getElementById('keywords-analysis').innerHTML = html;
+    }
+  })
+  .catch(e => console.error('加载关键字分析失败:', e));
+}
+
+// 加载搜索字词分析
+function loadSearchTermsAnalysis(merchantId, dateRange) {
+  if (!merchantId || !dateRange) return;
+  
+  fetch(`/api/workflow/ads_data/${merchantId}/search_terms?start_date=${dateRange.start_date}&end_date=${dateRange.end_date}&limit=20`)
+  .then(r => r.json())
+  .then(result => {
+    if (result.success && result.data && result.data.length > 0) {
+      const terms = result.data;
+      let html = `
+        <table>
+          <thead>
+            <tr>
+              <th>搜索词</th>
+              <th>触发关键字</th>
+              <th>点击</th>
+              <th>花费</th>
+              <th>建议</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+      
+      terms.forEach(term => {
+        const suggestion = term.clicks > 5 && term.cost > 5 ? 
+          '<span style="color:#ffa726;">考虑加否定</span>' : 
+          (term.clicks > 0 ? '<span style="color:#66bb6a;">正常</span>' : '-');
+        html += `
+          <tr>
+            <td><b>${term.search_term || '-'}</b></td>
+            <td>${term.keyword || '-'}</td>
+            <td>${term.clicks || 0}</td>
+            <td>$${(term.cost || 0).toFixed(2)}</td>
+            <td>${suggestion}</td>
+          </tr>
+        `;
+      });
+      
+      html += '</tbody></table>';
+      document.getElementById('search-terms-analysis').innerHTML = html;
+    }
+  })
+  .catch(e => console.error('加载搜索词分析失败:', e));
+}
+
+// 加载ROI仪表盘
+function loadRoiDashboard() {
+  // 如果有选中的商户，加载其数据
+  const merchantId = currentMerchantId || document.getElementById('merchant-select').value;
+  if (merchantId) {
+    const startDate = document.getElementById('start-date').value;
+    const endDate = document.getElementById('end-date').value;
+    
+    fetch(`/api/workflow/ads_data/${merchantId}/roi?start_date=${startDate}&end_date=${endDate}`)
+    .then(r => r.json())
+    .then(result => {
+      if (result.success && result.data && result.data.summary) {
+        displayRoiResult(result.data);
+      }
+    })
+    .catch(e => console.error('加载ROI失败:', e));
+  }
 }
 
 // 显示/隐藏加载
@@ -1409,7 +2268,7 @@ function toast(msg, type) {
   setTimeout(function() { t.remove(); }, 3500);
 }
 
-// 文件选择处理
+// 文件选择处理（保留原有功能）
 function handleFileSelect(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -1870,7 +2729,18 @@ QS_DASHBOARD_HTML = (
 <body>
 """
     + NAV_HTML.format(
-        p0="", p1="", p2="", p3="", p4="", p5="", p6="", p7="active", p8="", p9="", p10="", p11=""
+        p0="",
+        p1="",
+        p2="",
+        p3="",
+        p4="",
+        p5="",
+        p6="",
+        p7="active",
+        p8="",
+        p9="",
+        p10="",
+        p11="",
     )
     + """
 <div class="container">
@@ -2145,7 +3015,18 @@ COMPETITOR_ADS_HTML = (
 <body>
 """
     + NAV_HTML.format(
-        p0="", p1="", p2="", p3="", p4="", p5="", p6="", p7="", p8="active", p9="", p10="", p11=""
+        p0="",
+        p1="",
+        p2="",
+        p3="",
+        p4="",
+        p5="",
+        p6="",
+        p7="",
+        p8="active",
+        p9="",
+        p10="",
+        p11="",
     )
     + """
 <div class="container">
@@ -2700,6 +3581,7 @@ def api_yp_sync_reset():
 def api_yp_sync_collect_mid():
     """按商户ID列表采集商户数据（通过 yp_sync_merchants.py --mid）"""
     import subprocess
+
     data = request.get_json(silent=True) or {}
     merchant_ids = data.get("merchant_ids", [])
     if not merchant_ids:
@@ -2712,16 +3594,19 @@ def api_yp_sync_collect_mid():
     log_file = OUTPUT_DIR / "mid_collect_merchant_log.txt"
     try:
         proc = subprocess.Popen(
-            [sys.executable, script, "--mid"] + [str(m).strip() for m in merchant_ids if str(m).strip()],
+            [sys.executable, script, "--mid"]
+            + [str(m).strip() for m in merchant_ids if str(m).strip()],
             cwd=str(BASE_DIR),
             stdout=open(str(log_file), "a", encoding="utf-8"),
             stderr=subprocess.STDOUT,
         )
-        return jsonify({
-            "ok": True,
-            "msg": f"已启动商户采集：{', '.join(str(m) for m in merchant_ids)}",
-            "pid": proc.pid,
-        })
+        return jsonify(
+            {
+                "ok": True,
+                "msg": f"已启动商户采集：{', '.join(str(m) for m in merchant_ids)}",
+                "pid": proc.pid,
+            }
+        )
     except Exception as e:
         return jsonify({"ok": False, "msg": f"启动失败: {e}"})
 
@@ -2934,7 +3819,7 @@ function collectMerchantByMid() {
     body: JSON.stringify({ merchant_ids: mids })
   }).then(function(r) { return r.json(); }).then(function(d) {
     btn.disabled = false;
-    btn.textContent = '\u25B6 开始采集';
+    btn.textContent = '\u25b6 开始采集';
     if (d.ok) {
       resultBox.textContent = '[' + new Date().toLocaleTimeString() + '] ' + d.msg + '\\n\\n提示：采集通过 YP API 直接完成，通常几秒内写入数据库。刷新页面可查看最新数据。';
       toast('商户采集已启动', 'success');
@@ -2945,7 +3830,7 @@ function collectMerchantByMid() {
     }
   }).catch(function(e) {
     btn.disabled = false;
-    btn.textContent = '\u25B6 开始采集';
+    btn.textContent = '\u25b6 开始采集';
     resultBox.textContent = '请求失败: ' + e.message;
     toast('请求失败', 'error');
   });

@@ -4074,6 +4074,529 @@ def api_workflow_sales(merchant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
+# ============================================================
+# 投放数据管理 API
+# ============================================================
+
+# 投放数据报告类型
+ADS_REPORT_TYPES = {
+    "keywords": "搜索关键字报告",
+    "search_terms": "搜索字词报告",
+    "yp_report": "YP品牌报表",
+    "campaign": "Campaign截图",
+    "ad_group": "广告组数据",
+    "cost": "花费金额",
+}
+
+
+def _create_ads_tables():
+    """创建投放数据相关表"""
+    conn = get_db()
+    cur = conn.cursor()
+
+    # 投放数据主表
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ads_performance_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            merchant_id VARCHAR(20) NOT NULL,
+            report_type ENUM('keywords', 'search_terms', 'yp_report', 'campaign', 'ad_group', 'cost') NOT NULL,
+            report_date DATE,
+            start_date DATE,
+            end_date DATE,
+            data_json JSON,
+            file_path VARCHAR(500),
+            summary TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_merchant_type (merchant_id, report_type),
+            INDEX idx_report_date (report_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 搜索关键字报告表
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ads_keywords_report (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            merchant_id VARCHAR(20) NOT NULL,
+            report_date DATE NOT NULL,
+            keyword VARCHAR(255) NOT NULL,
+            match_type VARCHAR(20),
+            campaign VARCHAR(255),
+            ad_group VARCHAR(255),
+            impressions INT DEFAULT 0,
+            clicks INT DEFAULT 0,
+            ctr DECIMAL(10,4) DEFAULT 0,
+            cpc DECIMAL(10,4) DEFAULT 0,
+            cost DECIMAL(10,2) DEFAULT 0,
+            conversions INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_merchant_date (merchant_id, report_date),
+            INDEX idx_keyword (keyword)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 搜索字词报告表
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ads_search_terms_report (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            merchant_id VARCHAR(20) NOT NULL,
+            report_date DATE NOT NULL,
+            search_term VARCHAR(500) NOT NULL,
+            keyword VARCHAR(255),
+            match_type VARCHAR(20),
+            campaign VARCHAR(255),
+            ad_group VARCHAR(255),
+            impressions INT DEFAULT 0,
+            clicks INT DEFAULT 0,
+            ctr DECIMAL(10,4) DEFAULT 0,
+            cpc DECIMAL(10,4) DEFAULT 0,
+            cost DECIMAL(10,2) DEFAULT 0,
+            conversions INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_merchant_date (merchant_id, report_date),
+            INDEX idx_search_term (search_term(100))
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    # 投放效果汇总表
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS ads_performance_summary (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            merchant_id VARCHAR(20) NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            google_cost DECIMAL(10,2) DEFAULT 0,
+            google_clicks INT DEFAULT 0,
+            google_impressions INT DEFAULT 0,
+            yp_commission DECIMAL(10,2) DEFAULT 0,
+            yp_clicks INT DEFAULT 0,
+            yp_purchases INT DEFAULT 0,
+            yp_amount DECIMAL(10,2) DEFAULT 0,
+            roi DECIMAL(10,4) DEFAULT 0,
+            roas DECIMAL(10,4) DEFAULT 0,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_merchant_range (merchant_id, start_date, end_date),
+            INDEX idx_date_range (start_date, end_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+@bp.route("/api/workflow/ads_data/<merchant_id>", methods=["GET", "POST"])
+def api_workflow_ads_data(merchant_id):
+    """投放数据管理 API
+
+    GET: 获取商户的投放数据汇总
+    POST: 上传投放数据报告
+    """
+    try:
+        # 确保表存在
+        _create_ads_tables()
+
+        if request.method == "GET":
+            # 获取日期范围
+            start_date = request.args.get("start_date", "")
+            end_date = request.args.get("end_date", "")
+
+            if not start_date or not end_date:
+                from datetime import datetime
+                today = datetime.now()
+                start_date = today.strftime("%Y-%m-01")
+                end_date = today.strftime("%Y-%m-%d")
+
+            conn = get_db()
+            cur = conn.cursor(dictionary=True)
+
+            # 获取效果汇总
+            cur.execute("""
+                SELECT * FROM ads_performance_summary
+                WHERE merchant_id = %s AND start_date <= %s AND end_date >= %s
+                ORDER BY end_date DESC LIMIT 1
+            """, (merchant_id, end_date, start_date))
+            summary = cur.fetchone()
+
+            # 获取各类型报告的最新数据
+            reports = {}
+            for report_type in ADS_REPORT_TYPES.keys():
+                cur.execute("""
+                    SELECT id, report_date, start_date, end_date, summary, created_at
+                    FROM ads_performance_data
+                    WHERE merchant_id = %s AND report_type = %s
+                    ORDER BY created_at DESC LIMIT 1
+                """, (merchant_id, report_type))
+                reports[report_type] = cur.fetchone()
+
+            # 获取关键字报告统计
+            cur.execute("""
+                SELECT COUNT(*) as keyword_count,
+                       SUM(clicks) as total_clicks,
+                       SUM(cost) as total_cost,
+                       AVG(ctr) as avg_ctr,
+                       AVG(cpc) as avg_cpc
+                FROM ads_keywords_report
+                WHERE merchant_id = %s AND report_date BETWEEN %s AND %s
+            """, (merchant_id, start_date, end_date))
+            keywords_stats = cur.fetchone()
+
+            # 获取搜索字词报告统计
+            cur.execute("""
+                SELECT COUNT(*) as term_count,
+                       SUM(clicks) as total_clicks,
+                       SUM(cost) as total_cost
+                FROM ads_search_terms_report
+                WHERE merchant_id = %s AND report_date BETWEEN %s AND %s
+            """, (merchant_id, start_date, end_date))
+            search_terms_stats = cur.fetchone()
+
+            conn.close()
+
+            return jsonify({
+                "success": True,
+                "data": {
+                    "summary": summary,
+                    "reports": reports,
+                    "keywords_stats": keywords_stats,
+                    "search_terms_stats": search_terms_stats,
+                    "date_range": {"start_date": start_date, "end_date": end_date}
+                }
+            })
+
+        else:  # POST - 上传数据
+            data = request.get_json(silent=True) or {}
+            report_type = data.get("report_type", "")
+            report_date = data.get("report_date", "")
+            start_date = data.get("start_date", report_date)
+            end_date = data.get("end_date", report_date)
+            report_data = data.get("data", [])
+            summary_text = data.get("summary", "")
+            cost_amount = data.get("cost_amount", 0)  # 用于花费金额类型
+
+            if report_type not in ADS_REPORT_TYPES:
+                return jsonify({"success": False, "error": f"无效的报告类型: {report_type}"})
+
+            conn = get_db()
+            cur = conn.cursor(dictionary=True)
+
+            if report_type == "cost":
+                # 保存花费金额到汇总表
+                cur.execute("""
+                    INSERT INTO ads_performance_summary
+                    (merchant_id, start_date, end_date, google_cost, notes)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE google_cost = VALUES(google_cost), notes = VALUES(notes)
+                """, (merchant_id, start_date, end_date, cost_amount, summary_text))
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "message": f"花费金额 ${cost_amount} 已保存",
+                    "data": {"cost": cost_amount, "date_range": f"{start_date} ~ {end_date}"}
+                })
+
+            elif report_type == "keywords":
+                # 保存搜索关键字报告
+                saved = 0
+                for row in report_data:
+                    if not row.get("keyword"):
+                        continue
+                    try:
+                        cur.execute("""
+                            INSERT INTO ads_keywords_report
+                            (merchant_id, report_date, keyword, match_type, campaign, ad_group,
+                             impressions, clicks, ctr, cpc, cost, conversions)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            merchant_id, report_date,
+                            row.get("keyword", ""),
+                            row.get("match_type", ""),
+                            row.get("campaign", ""),
+                            row.get("ad_group", ""),
+                            int(row.get("impressions", 0) or 0),
+                            int(row.get("clicks", 0) or 0),
+                            float(row.get("ctr", 0) or 0),
+                            float(row.get("cpc", 0) or 0),
+                            float(row.get("cost", 0) or 0),
+                            int(row.get("conversions", 0) or 0)
+                        ))
+                        saved += 1
+                    except Exception as e:
+                        print(f"[ERROR] 保存关键字失败: {e}")
+
+                # 保存到主表
+                import json
+                cur.execute("""
+                    INSERT INTO ads_performance_data
+                    (merchant_id, report_type, report_date, start_date, end_date, data_json, summary)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (merchant_id, report_type, report_date, start_date, end_date,
+                      json.dumps(report_data[:100]), summary_text or f"已保存 {saved} 条关键字数据"))
+
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "message": f"已保存 {saved} 条关键字数据",
+                    "data": {"saved_count": saved}
+                })
+
+            elif report_type == "search_terms":
+                # 保存搜索字词报告
+                saved = 0
+                for row in report_data:
+                    if not row.get("search_term"):
+                        continue
+                    try:
+                        cur.execute("""
+                            INSERT INTO ads_search_terms_report
+                            (merchant_id, report_date, search_term, keyword, match_type, campaign, ad_group,
+                             impressions, clicks, ctr, cpc, cost, conversions)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (
+                            merchant_id, report_date,
+                            row.get("search_term", ""),
+                            row.get("keyword", ""),
+                            row.get("match_type", ""),
+                            row.get("campaign", ""),
+                            row.get("ad_group", ""),
+                            int(row.get("impressions", 0) or 0),
+                            int(row.get("clicks", 0) or 0),
+                            float(row.get("ctr", 0) or 0),
+                            float(row.get("cpc", 0) or 0),
+                            float(row.get("cost", 0) or 0),
+                            int(row.get("conversions", 0) or 0)
+                        ))
+                        saved += 1
+                    except Exception as e:
+                        print(f"[ERROR] 保存搜索字词失败: {e}")
+
+                import json
+                cur.execute("""
+                    INSERT INTO ads_performance_data
+                    (merchant_id, report_type, report_date, start_date, end_date, data_json, summary)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (merchant_id, report_type, report_date, start_date, end_date,
+                      json.dumps(report_data[:100]), summary_text or f"已保存 {saved} 条搜索字词数据"))
+
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "message": f"已保存 {saved} 条搜索字词数据",
+                    "data": {"saved_count": saved}
+                })
+
+            elif report_type == "yp_report":
+                # 保存YP品牌报表数据
+                import json
+                yp_data = data.get("yp_data", {})
+                yp_clicks = yp_data.get("clicks", 0)
+                yp_purchases = yp_data.get("purchases", 0)
+                yp_commission = yp_data.get("commission", 0)
+                yp_amount = yp_data.get("amount", 0)
+
+                # 更新汇总表
+                cur.execute("""
+                    INSERT INTO ads_performance_summary
+                    (merchant_id, start_date, end_date, yp_clicks, yp_purchases, yp_commission, yp_amount, notes)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        yp_clicks = VALUES(yp_clicks),
+                        yp_purchases = VALUES(yp_purchases),
+                        yp_commission = VALUES(yp_commission),
+                        yp_amount = VALUES(yp_amount),
+                        notes = VALUES(notes)
+                """, (merchant_id, start_date, end_date, yp_clicks, yp_purchases, yp_commission, yp_amount, summary_text))
+
+                cur.execute("""
+                    INSERT INTO ads_performance_data
+                    (merchant_id, report_type, report_date, start_date, end_date, data_json, summary)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (merchant_id, report_type, report_date, start_date, end_date,
+                      json.dumps(yp_data), summary_text or f"YP报表: 点击{yp_clicks} 佣金${yp_commission}"))
+
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "message": f"YP报表数据已保存",
+                    "data": yp_data
+                })
+
+            else:
+                # 其他类型（campaign, ad_group）- 存储JSON
+                import json
+                cur.execute("""
+                    INSERT INTO ads_performance_data
+                    (merchant_id, report_type, report_date, start_date, end_date, data_json, summary)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (merchant_id, report_type, report_date, start_date, end_date,
+                      json.dumps(report_data), summary_text))
+
+                conn.commit()
+                conn.close()
+                return jsonify({
+                    "success": True,
+                    "message": f"{ADS_REPORT_TYPES[report_type]}已保存",
+                    "data": {"report_type": report_type}
+                })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/workflow/ads_data/<merchant_id>/keywords", methods=["GET"])
+def api_workflow_ads_keywords(merchant_id):
+    """获取关键字报告详情"""
+    try:
+        start_date = request.args.get("start_date", "")
+        end_date = request.args.get("end_date", "")
+        limit = int(request.args.get("limit", 100))
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("""
+            SELECT keyword, match_type, campaign, ad_group,
+                   SUM(impressions) as impressions,
+                   SUM(clicks) as clicks,
+                   AVG(ctr) as ctr,
+                   AVG(cpc) as cpc,
+                   SUM(cost) as cost,
+                   SUM(conversions) as conversions
+            FROM ads_keywords_report
+            WHERE merchant_id = %s
+            AND (%s = '' OR report_date >= %s)
+            AND (%s = '' OR report_date <= %s)
+            GROUP BY keyword, match_type
+            ORDER BY cost DESC
+            LIMIT %s
+        """, (merchant_id, start_date, start_date, end_date, end_date, limit))
+
+        keywords = cur.fetchall()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "data": keywords,
+            "count": len(keywords)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/workflow/ads_data/<merchant_id>/search_terms", methods=["GET"])
+def api_workflow_ads_search_terms(merchant_id):
+    """获取搜索字词报告详情"""
+    try:
+        start_date = request.args.get("start_date", "")
+        end_date = request.args.get("end_date", "")
+        limit = int(request.args.get("limit", 100))
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        cur.execute("""
+            SELECT search_term, keyword, match_type, campaign,
+                   SUM(impressions) as impressions,
+                   SUM(clicks) as clicks,
+                   AVG(ctr) as ctr,
+                   AVG(cpc) as cpc,
+                   SUM(cost) as cost,
+                   SUM(conversions) as conversions
+            FROM ads_search_terms_report
+            WHERE merchant_id = %s
+            AND (%s = '' OR report_date >= %s)
+            AND (%s = '' OR report_date <= %s)
+            GROUP BY search_term, keyword
+            ORDER BY cost DESC
+            LIMIT %s
+        """, (merchant_id, start_date, start_date, end_date, end_date, limit))
+
+        terms = cur.fetchall()
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "data": terms,
+            "count": len(terms)
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/workflow/ads_data/<merchant_id>/roi", methods=["GET", "POST"])
+def api_workflow_ads_roi(merchant_id):
+    """计算并返回ROI数据"""
+    try:
+        start_date = request.args.get("start_date", "")
+        end_date = request.args.get("end_date", "")
+
+        if not start_date or not end_date:
+            from datetime import datetime
+            today = datetime.now()
+            start_date = today.strftime("%Y-%m-01")
+            end_date = today.strftime("%Y-%m-%d")
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        # 获取汇总数据
+        cur.execute("""
+            SELECT * FROM ads_performance_summary
+            WHERE merchant_id = %s AND start_date = %s AND end_date = %s
+        """, (merchant_id, start_date, end_date))
+        summary = cur.fetchone()
+
+        if summary:
+            # 计算ROI和ROAS
+            google_cost = float(summary.get("google_cost", 0) or 0)
+            yp_commission = float(summary.get("yp_commission", 0) or 0)
+            yp_amount = float(summary.get("yp_amount", 0) or 0)
+
+            roi = (yp_commission - google_cost) / google_cost if google_cost > 0 else 0
+            roas = yp_amount / google_cost if google_cost > 0 else 0
+
+            # 更新汇总表
+            cur.execute("""
+                UPDATE ads_performance_summary
+                SET roi = %s, roas = %s
+                WHERE id = %s
+            """, (roi, roas, summary["id"]))
+            conn.commit()
+
+            summary["roi"] = roi
+            summary["roas"] = roas
+
+        # 获取关键字花费汇总
+        cur.execute("""
+            SELECT SUM(cost) as total_cost, SUM(clicks) as total_clicks
+            FROM ads_keywords_report
+            WHERE merchant_id = %s AND report_date BETWEEN %s AND %s
+        """, (merchant_id, start_date, end_date))
+        kw_stats = cur.fetchone()
+
+        conn.close()
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "summary": summary,
+                "keywords_cost": float(kw_stats.get("total_cost", 0) or 0) if kw_stats else 0,
+                "keywords_clicks": int(kw_stats.get("total_clicks", 0) or 0) if kw_stats else 0,
+                "date_range": {"start_date": start_date, "end_date": end_date}
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
 @bp.route("/api/workflow/website/<merchant_id>", methods=["GET", "POST", "PUT"])
 def api_workflow_website(merchant_id):
     """Step 2: 获取/更新官网"""
