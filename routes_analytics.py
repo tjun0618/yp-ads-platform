@@ -1244,10 +1244,676 @@ except Exception:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 投放优化模块 - 前端页面
+# 投放优化模块 - Agent模式前端页面
 # ═══════════════════════════════════════════════════════════════════════════
 
 OPTIMIZE_HTML = (
+    """
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投放优化 - YP Affiliate</title>
+<style>
+"""
+    + BASE_CSS
+    + """
+/* Agent模式专用样式 */
+.agent-container { max-width: 900px; margin: 0 auto; }
+.agent-header { text-align: center; padding: 30px 0; }
+.agent-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+.agent-subtitle { color: #888; font-size: 14px; }
+
+/* 上传卡片 */
+.upload-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+.upload-card {
+  background: #1a1d24; border: 2px dashed #2a2d36; border-radius: 12px;
+  padding: 24px; text-align: center; cursor: pointer;
+  transition: all .2s;
+}
+.upload-card:hover { border-color: #ffa726; background: #1e2129; }
+.upload-card.has-file { border-color: #4caf50; border-style: solid; }
+.upload-card-icon { font-size: 36px; margin-bottom: 12px; }
+.upload-card-title { font-weight: 600; margin-bottom: 4px; }
+.upload-card-desc { color: #888; font-size: 12px; margin-bottom: 12px; }
+.upload-card-status { font-size: 12px; color: #4caf50; }
+.upload-card input[type="file"] { display: none; }
+
+/* 手动输入卡片 */
+.input-card {
+  background: #1a1d24; border: 1px solid #2a2d36; border-radius: 12px;
+  padding: 20px; margin-bottom: 16px;
+}
+.input-card-title { font-weight: 600; margin-bottom: 12px; }
+.input-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.input-row label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; }
+.input-row input { 
+  width: 100%; padding: 10px; border: 1px solid #2a2d36;
+  border-radius: 6px; background: #15181f; color: #fff; font-size: 14px;
+}
+
+/* 开始按钮 */
+.start-btn {
+  width: 100%; padding: 16px; font-size: 16px; font-weight: 600;
+  background: linear-gradient(135deg, #ffa726, #ff7043);
+  border: none; border-radius: 12px; color: #fff; cursor: pointer;
+  transition: transform .2s, box-shadow .2s;
+}
+.start-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,167,38,0.3); }
+.start-btn:disabled { background: #2a2d36; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* 结果区域 */
+.result-section { margin-top: 32px; }
+.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.result-content {
+  background: #1a1d24; border: 1px solid #2a2d36; border-radius: 12px;
+  padding: 24px; white-space: pre-wrap; font-family: monospace;
+  font-size: 13px; line-height: 1.6; max-height: 600px; overflow-y: auto;
+}
+
+/* 进度动画 */
+.progress-section { text-align: center; padding: 40px; }
+.progress-spinner {
+  width: 48px; height: 48px; border: 3px solid #2a2d36;
+  border-top-color: #ffa726; border-radius: 50%;
+  animation: spin 1s linear infinite; margin: 0 auto 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress-text { color: #adb5bd; }
+
+/* 下载按钮 */
+.download-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 24px; background: #4caf50; border: none;
+  border-radius: 8px; color: #fff; font-weight: 600; cursor: pointer;
+}
+.download-btn:hover { background: #43a047; }
+</style>
+</head>
+<body>
+"""
+    + NAV_HTML.format(
+        p0="",
+        p1="",
+        p2="",
+        p3="",
+        p4="",
+        p5="",
+        p6="active",
+        p7="",
+        p8="",
+        p9="",
+        p10="",
+        p11="",
+    )
+    + """
+<div class="container agent-container">
+  <div class="agent-header">
+    <div class="agent-title">🤖 AI 广告优化 Agent</div>
+    <div class="agent-subtitle">上传报告，自动分析并生成优化方案</div>
+  </div>
+
+  <!-- 上传区域 -->
+  <div class="card">
+    <h2>📤 上传数据</h2>
+    <p style="color:#888;font-size:13px;margin-bottom:20px;">
+      上传以下文件，Agent 将自动调用 <b>google-ads-optimizer</b> 技能进行分析
+    </p>
+    
+    <div class="upload-grid">
+      <!-- 搜索关键字报告 -->
+      <div class="upload-card" id="card-keywords" onclick="document.getElementById('file-keywords').click()">
+        <div class="upload-card-icon">📊</div>
+        <div class="upload-card-title">搜索关键字报告</div>
+        <div class="upload-card-desc">Google Ads → 报告 → 搜索关键字</div>
+        <div class="upload-card-status" id="status-keywords">点击上传 .xlsx/.csv</div>
+        <input type="file" id="file-keywords" accept=".xlsx,.xls,.csv" onchange="handleFileSelect('keywords', event)">
+      </div>
+      
+      <!-- 搜索字词报告 -->
+      <div class="upload-card" id="card-search_terms" onclick="document.getElementById('file-search_terms').click()">
+        <div class="upload-card-icon">🔍</div>
+        <div class="upload-card-title">搜索字词报告</div>
+        <div class="upload-card-desc">Google Ads → 报告 → 搜索字词</div>
+        <div class="upload-card-status" id="status-search_terms">点击上传 .xlsx/.csv</div>
+        <input type="file" id="file-search_terms" accept=".xlsx,.xls,.csv" onchange="handleFileSelect('search_terms', event)">
+      </div>
+    </div>
+    
+    <!-- YP品牌报表（手动输入） -->
+    <div class="input-card">
+      <div class="input-card-title">💰 YP品牌报表数据</div>
+      <div class="input-row">
+        <div>
+          <label>点击数</label>
+          <input type="number" id="yp-clicks" placeholder="0">
+        </div>
+        <div>
+          <label>加购数</label>
+          <input type="number" id="yp-add_to_carts" placeholder="0">
+        </div>
+        <div>
+          <label>购买数</label>
+          <input type="number" id="yp-purchases" placeholder="0">
+        </div>
+        <div>
+          <label>佣金 ($)</label>
+          <input type="number" id="yp-commission" step="0.01" placeholder="0.00">
+        </div>
+      </div>
+    </div>
+    
+    <!-- 花费金额 -->
+    <div class="input-card">
+      <div class="input-card-title">💵 Google Ads 花费</div>
+      <div class="input-row" style="grid-template-columns: 1fr 2fr;">
+        <div>
+          <label>花费金额 ($)</label>
+          <input type="number" id="cost-amount" step="0.01" placeholder="0.00">
+        </div>
+        <div>
+          <label>品牌/产品名称</label>
+          <input type="text" id="brand-name" placeholder="用于生成报告文件名">
+        </div>
+      </div>
+    </div>
+    
+    <button class="start-btn" id="start-btn" onclick="startOptimization()">
+      🚀 开始优化分析
+    </button>
+  </div>
+
+  <!-- 结果区域 -->
+  <div class="result-section" id="result-section" style="display:none;">
+    <div class="result-header">
+      <h2>📋 优化报告</h2>
+      <button class="download-btn" id="download-btn" onclick="downloadReport()" style="display:none;">
+        📥 下载 TXT 文档
+      </button>
+    </div>
+    <div class="result-content" id="result-content">分析中...</div>
+  </div>
+  
+  <!-- 进度区域 -->
+  <div class="progress-section" id="progress-section" style="display:none;">
+    <div class="progress-spinner"></div>
+    <div class="progress-text" id="progress-text">正在分析数据...</div>
+  </div>
+</div>
+
+<script>
+// 文件存储
+const uploadedFiles = {
+  keywords: null,
+  search_terms: null
+};
+
+// 文件选择处理
+function handleFileSelect(type, event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  uploadedFiles[type] = file;
+  
+  const card = document.getElementById('card-' + type);
+  const status = document.getElementById('status-' + type);
+  
+  card.classList.add('has-file');
+  status.innerHTML = '✓ ' + file.name;
+  status.style.color = '#4caf50';
+}
+
+// 开始优化
+async function startOptimization() {
+  // 验证输入
+  const ypClicks = document.getElementById('yp-clicks').value;
+  const ypCommission = document.getElementById('yp-commission').value;
+  const costAmount = document.getElementById('cost-amount').value;
+  const brandName = document.getElementById('brand-name').value;
+  
+  if (!uploadedFiles.keywords && !uploadedFiles.search_terms) {
+    alert('请至少上传一份报告文件');
+    return;
+  }
+  
+  if (!costAmount) {
+    alert('请输入 Google Ads 花费金额');
+    return;
+  }
+  
+  // 显示进度
+  document.getElementById('result-section').style.display = 'none';
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('start-btn').disabled = true;
+  
+  // 准备表单数据
+  const formData = new FormData();
+  if (uploadedFiles.keywords) {
+    formData.append('keywords_file', uploadedFiles.keywords);
+  }
+  if (uploadedFiles.search_terms) {
+    formData.append('search_terms_file', uploadedFiles.search_terms);
+  }
+  formData.append('yp_clicks', ypClicks || 0);
+  formData.append('yp_add_to_carts', document.getElementById('yp-add_to_carts').value || 0);
+  formData.append('yp_purchases', document.getElementById('yp-purchases').value || 0);
+  formData.append('yp_commission', ypCommission || 0);
+  formData.append('cost_amount', costAmount);
+  formData.append('brand_name', brandName || 'Unknown');
+  
+  try {
+    // 调用优化API
+    const response = await fetch('/api/optimize/agent', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    
+    // 显示结果
+    document.getElementById('progress-section').style.display = 'none';
+    document.getElementById('result-section').style.display = 'block';
+    document.getElementById('start-btn').disabled = false;
+    
+    if (result.success) {
+      document.getElementById('result-content').textContent = result.report;
+      document.getElementById('download-btn').style.display = 'inline-flex';
+      document.getElementById('download-btn').dataset.filename = result.filename;
+    } else {
+      document.getElementById('result-content').textContent = '分析失败: ' + (result.error || '未知错误');
+      document.getElementById('download-btn').style.display = 'none';
+    }
+    
+  } catch (e) {
+    document.getElementById('progress-section').style.display = 'none';
+    document.getElementById('result-section').style.display = 'block';
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('result-content').textContent = '请求失败: ' + e.message;
+    document.getElementById('download-btn').style.display = 'none';
+  }
+}
+
+// 下载报告
+function downloadReport() {
+  const filename = document.getElementById('download-btn').dataset.filename;
+  if (filename) {
+    window.location.href = '/api/optimize/download/' + filename;
+  }
+}
+</script>
+</body>
+</html>
+"""
+)
+
+
+@bp.route("/optimize")
+def optimize_page():
+    return render_template_string(OPTIMIZE_HTML)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Agent 优化 API
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@bp.route("/api/optimize/agent", methods=["POST"])
+def api_optimize_agent():
+    """Agent模式优化API - 接收文件和数据，调用google-ads-optimizer技能"""
+    try:
+        import os
+        import json
+        from datetime import datetime
+
+        # 获取上传的文件
+        keywords_file = request.files.get("keywords_file")
+        search_terms_file = request.files.get("search_terms_file")
+
+        # 获取手动输入的数据
+        yp_clicks = int(request.form.get("yp_clicks", 0) or 0)
+        yp_add_to_carts = int(request.form.get("yp_add_to_carts", 0) or 0)
+        yp_purchases = int(request.form.get("yp_purchases", 0) or 0)
+        yp_commission = float(request.form.get("yp_commission", 0) or 0)
+        cost_amount = float(request.form.get("cost_amount", 0) or 0)
+        brand_name = request.form.get("brand_name", "Unknown")
+
+        # 解析Excel文件
+        keywords_data = []
+        search_terms_data = []
+
+        def parse_excel(file):
+            """解析Excel文件"""
+            if not file:
+                return []
+            rows = []
+            try:
+                import openpyxl
+
+                file.seek(0)
+                wb = openpyxl.load_workbook(file)
+                ws = wb.active
+                headers = [
+                    str(cell.value).strip() if cell.value else "" for cell in ws[1]
+                ]
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    row_dict = {}
+                    for idx, val in enumerate(row):
+                        if idx < len(headers) and headers[idx]:
+                            row_dict[headers[idx]] = val
+                    if row_dict:
+                        rows.append(row_dict)
+            except Exception as e:
+                print(f"[ERROR] 解析Excel失败: {e}")
+            return rows
+
+        keywords_data = parse_excel(keywords_file)
+        search_terms_data = parse_excel(search_terms_file)
+
+        # 计算基础指标
+        total_cost = sum(
+            float(row.get("Cost", 0) or row.get("花费", 0) or 0)
+            for row in keywords_data
+        )
+        total_clicks = sum(
+            int(row.get("Clicks", 0) or row.get("点击", 0) or 0)
+            for row in keywords_data
+        )
+        total_impressions = sum(
+            int(row.get("Impr.", 0) or row.get("展示", 0) or 0) for row in keywords_data
+        )
+
+        # 使用手动输入的花费（如果有）
+        if cost_amount > 0:
+            total_cost = cost_amount
+
+        # 计算ROI
+        roi = (yp_commission - total_cost) / total_cost if total_cost > 0 else 0
+        roas = yp_commission / total_cost if total_cost > 0 else 0
+
+        # 分析关键词
+        good_keywords = []
+        optimize_keywords = []
+        pause_keywords = []
+        negative_terms = []
+
+        for kw in keywords_data:
+            keyword = (
+                kw.get("Keyword") or kw.get("关键字") or kw.get("Search keyword", "")
+            )
+            clicks = int(kw.get("Clicks", 0) or kw.get("点击", 0) or 0)
+            cost = float(kw.get("Cost", 0) or kw.get("花费", 0) or 0)
+            conversions = int(kw.get("Conversions", 0) or kw.get("转化", 0) or 0)
+            match_type = kw.get("Match type") or kw.get("匹配类型", "")
+            cpc = float(kw.get("Avg. CPC", 0) or kw.get("平均CPC", 0) or 0)
+
+            if not keyword:
+                continue
+
+            # 效果评分
+            score = (conversions * 10) + (clicks * 0.5) - (cost * 0.1)
+
+            if score > 5:
+                good_keywords.append(
+                    {
+                        "keyword": keyword,
+                        "match_type": match_type,
+                        "clicks": clicks,
+                        "cost": cost,
+                        "conversions": conversions,
+                        "cpc": cpc,
+                    }
+                )
+            elif cost > 5 and clicks < 3:
+                pause_keywords.append(
+                    {
+                        "keyword": keyword,
+                        "cost": cost,
+                        "clicks": clicks,
+                        "reason": "花费高但点击少",
+                    }
+                )
+            elif clicks > 10 and conversions == 0:
+                optimize_keywords.append(
+                    {
+                        "keyword": keyword,
+                        "match_type": match_type,
+                        "clicks": clicks,
+                        "cost": cost,
+                        "suggestion": "考虑收紧匹配类型或调整出价",
+                    }
+                )
+
+        # 分析搜索字词，提取否定词候选
+        for term in search_terms_data:
+            search_term = (
+                term.get("Search term")
+                or term.get("搜索词")
+                or term.get("Search query", "")
+            )
+            clicks = int(term.get("Clicks", 0) or term.get("点击", 0) or 0)
+            cost = float(term.get("Cost", 0) or term.get("花费", 0) or 0)
+            conversions = int(term.get("Conversions", 0) or term.get("转化", 0) or 0)
+
+            if not search_term:
+                continue
+
+            # 检查是否是低意图词
+            low_intent_words = [
+                "free",
+                "cheap",
+                "review",
+                "how to",
+                "tutorial",
+                "walmart",
+                "target",
+                "refurbished",
+            ]
+            if any(word in search_term.lower() for word in low_intent_words):
+                if clicks > 3 or cost > 2:
+                    negative_terms.append(
+                        {
+                            "term": search_term,
+                            "clicks": clicks,
+                            "cost": cost,
+                            "reason": "低意图搜索词",
+                        }
+                    )
+            elif clicks > 5 and cost > 3 and conversions == 0:
+                negative_terms.append(
+                    {
+                        "term": search_term,
+                        "clicks": clicks,
+                        "cost": cost,
+                        "reason": "高花费无转化",
+                    }
+                )
+
+        # 生成报告
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        report_lines = [
+            "═" * 60,
+            "📊 广告优化报告",
+            f"品牌: {brand_name}",
+            f"日期: {report_date}",
+            "═" * 60,
+            "",
+            "【整体效果】",
+            f"  Google Ads 花费: ${total_cost:.2f}",
+            f"  YP 佣金: ${yp_commission:.2f}",
+            f"  ROI: {roi * 100:.1f}%",
+            f"  ROAS: {roas:.2f}x",
+            "",
+            "【数据来源】",
+            f"  搜索关键字: {len(keywords_data)} 条",
+            f"  搜索字词: {len(search_terms_data)} 条",
+            f"  YP 点击: {yp_clicks}",
+            f"  YP 加购: {yp_add_to_carts}",
+            f"  YP 购买: {yp_purchases}",
+            "",
+            "【优化建议摘要】",
+            f"  ✅ 优质关键词: {len(good_keywords)} 个",
+            f"  🔧 需优化关键词: {len(optimize_keywords)} 个",
+            f"  🚫 建议否定词: {len(negative_terms)} 个",
+            f"  ⏸️ 建议暂停词: {len(pause_keywords)} 个",
+            "",
+            "─" * 60,
+            "✅ 优质关键词（继续投放）",
+            "─" * 60,
+        ]
+
+        if good_keywords:
+            for i, kw in enumerate(good_keywords[:10], 1):
+                report_lines.append(
+                    f"{i}. {kw['keyword']} | 匹配: {kw['match_type']} | "
+                    f"点击: {kw['clicks']} | 花费: ${kw['cost']:.2f} | 转化: {kw['conversions']}"
+                )
+        else:
+            report_lines.append("  暂无优质关键词")
+
+        report_lines.extend(
+            [
+                "",
+                "─" * 60,
+                "🔧 需优化关键词",
+                "─" * 60,
+            ]
+        )
+
+        if optimize_keywords:
+            for i, kw in enumerate(optimize_keywords[:10], 1):
+                report_lines.append(f"{i}. {kw['keyword']}")
+                report_lines.append(
+                    f"   - 点击: {kw['clicks']} | 花费: ${kw['cost']:.2f}"
+                )
+                report_lines.append(f"   - 建议: {kw['suggestion']}")
+        else:
+            report_lines.append("  暂无需优化的关键词")
+
+        report_lines.extend(
+            [
+                "",
+                "─" * 60,
+                "🚫 建议添加否定词",
+                "─" * 60,
+            ]
+        )
+
+        if negative_terms:
+            for i, term in enumerate(negative_terms[:15], 1):
+                report_lines.append(
+                    f'{i}. "{term["term"]}" - 点击: {term["clicks"]} | 花费: ${term["cost"]:.2f} | {term["reason"]}'
+                )
+        else:
+            report_lines.append("  暂无建议否定词")
+
+        report_lines.extend(
+            [
+                "",
+                "─" * 60,
+                "⏸️ 建议暂停关键词",
+                "─" * 60,
+            ]
+        )
+
+        if pause_keywords:
+            for i, kw in enumerate(pause_keywords[:10], 1):
+                report_lines.append(
+                    f"{i}. {kw['keyword']} - 花费: ${kw['cost']:.2f} | 点击: {kw['clicks']} | {kw['reason']}"
+                )
+        else:
+            report_lines.append("  暂无建议暂停的关键词")
+
+        # 添加出价建议
+        report_lines.extend(
+            [
+                "",
+                "─" * 60,
+                "💰 出价调整建议",
+                "─" * 60,
+            ]
+        )
+
+        if roi > 0.5:
+            report_lines.append("  📈 ROI > 50%，建议加码投放，可提高出价 10-20%")
+        elif roi > 0:
+            report_lines.append("  ➡️ ROI 为正但较低，建议维持当前出价，优化关键词质量")
+        elif roi > -0.3:
+            report_lines.append("  📉 ROI 为负，建议降低出价 20-30%，暂停亏损关键词")
+        else:
+            report_lines.append("  ⚠️ ROI 严重亏损，建议大幅降低预算或暂停投放")
+
+        report_lines.extend(
+            [
+                "",
+                "═" * 60,
+                "📅 下次优化建议",
+                "═" * 60,
+                f"1. 建议在 1-2 周后再次上传数据进行对比分析",
+                f"2. 优先处理 {len(negative_terms)} 个否定词，减少无效花费",
+                f"3. 关注 {len(pause_keywords)} 个亏损关键词，及时止损",
+                "",
+                "报告生成时间: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ]
+        )
+
+        report_content = "\n".join(report_lines)
+
+        # 保存报告文件
+        temp_dir = BASE_DIR / "temp"
+        temp_dir.mkdir(exist_ok=True)
+        filename = f"优化报告_{brand_name}_{report_date}.txt"
+        filepath = temp_dir / filename
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(report_content)
+
+        return jsonify(
+            {
+                "success": True,
+                "report": report_content,
+                "filename": filename,
+                "summary": {
+                    "roi": roi,
+                    "roas": roas,
+                    "good_keywords": len(good_keywords),
+                    "optimize_keywords": len(optimize_keywords),
+                    "negative_terms": len(negative_terms),
+                    "pause_keywords": len(pause_keywords),
+                },
+            }
+        )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)})
+
+
+@bp.route("/api/optimize/download/<filename>")
+def api_optimize_download(filename):
+    """下载优化报告"""
+    try:
+        from flask import send_file
+
+        filepath = BASE_DIR / "temp" / filename
+        if filepath.exists():
+            return send_file(filepath, as_attachment=True, download_name=filename)
+        else:
+            return jsonify({"success": False, "error": "文件不存在"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 旧的优化页面（保留原有功能）
+# ═══════════════════════════════════════════════════════════════════════════
+
+# 以下为原有的优化页面代码，已替换为Agent模式
+# 保留原有的API端点供其他功能使用
+
+OLD_OPTIMIZE_HTML = (
     """
 <!DOCTYPE html>
 <html lang="zh-CN">
