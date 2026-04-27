@@ -3934,6 +3934,146 @@ def api_workflow_merchant(merchant_id):
         return jsonify({"success": False, "error": str(e)})
 
 
+@bp.route("/api/workflow/sales/<merchant_id>", methods=["GET", "POST"])
+def api_workflow_sales(merchant_id):
+    """获取商户销售数据
+
+    从YP平台获取商户的销售转化数据，包括：
+    - 商户维度的点击、加购、购买、佣金数据
+    - 商品维度的销售数据
+
+    参数:
+        - start_date: 开始日期 (YYYY-MM-DD)
+        - end_date: 结束日期 (YYYY-MM-DD)
+        - force: 是否强制重新获取 (true/false)
+    """
+    try:
+        start_date = request.args.get("start_date", "")
+        end_date = request.args.get("end_date", "")
+        force_refresh = request.args.get("force", "false").lower() == "true"
+
+        # 默认日期范围：本月
+        if not start_date or not end_date:
+            from datetime import datetime
+
+            today = datetime.now()
+            start_date = today.strftime("%Y-%m-01")
+            end_date = today.strftime("%Y-%m-%d")
+
+        conn = get_db()
+        cur = conn.cursor(dictionary=True)
+
+        # 获取商户名称
+        cur.execute(
+            "SELECT merchant_name FROM yp_merchants WHERE merchant_id = %s LIMIT 1",
+            (merchant_id,),
+        )
+        merchant = cur.fetchone()
+        merchant_name = merchant["merchant_name"] if merchant else f"商户{merchant_id}"
+
+        # 检查是否需要重新获取数据
+        if force_refresh:
+            # 调用采集脚本获取最新数据
+            import subprocess
+            import sys
+
+            script_path = BASE_DIR / "yp_report_collector.py"
+            if script_path.exists():
+                print(f"[Sales] 正在从YP平台获取销售数据...")
+
+                # 异步执行采集脚本
+                subprocess.Popen(
+                    [
+                        sys.executable,
+                        str(script_path),
+                        "--type",
+                        "all",
+                        "--start-date",
+                        start_date,
+                        "--end-date",
+                        end_date,
+                    ],
+                    cwd=str(BASE_DIR),
+                )
+
+                conn.close()
+                return jsonify(
+                    {
+                        "success": True,
+                        "collecting": True,
+                        "message": "正在从YP平台获取数据，请稍后刷新查看",
+                        "hint": "采集可能需要1-2分钟，请稍后点击查看现有数据",
+                    }
+                )
+            else:
+                conn.close()
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "采集脚本不存在，请检查 yp_report_collector.py",
+                    }
+                )
+
+        # 查询商户报表数据
+        cur.execute(
+            """
+            SELECT merchant_id, merchant_name, report_date, clicks, detail_views,
+                   add_to_carts, purchases, amount, commission
+            FROM yp_merchant_report
+            WHERE merchant_id = %s AND report_date = %s
+            LIMIT 1
+        """,
+            (merchant_id, end_date),
+        )
+        merchant_report = cur.fetchone()
+
+        # 查询商品报表数据
+        cur.execute(
+            """
+            SELECT merchant_id, merchant_name, product_id, asin, report_date,
+                   clicks, detail_views, add_to_carts, purchases, amount, commission
+            FROM yp_product_report
+            WHERE merchant_id = %s AND report_date = %s
+            ORDER BY clicks DESC, purchases DESC
+            LIMIT 50
+        """,
+            (merchant_id, end_date),
+        )
+        product_reports = cur.fetchall()
+
+        conn.close()
+
+        if merchant_report or product_reports:
+            return jsonify(
+                {
+                    "success": True,
+                    "data": {
+                        "merchant_report": merchant_report,
+                        "product_reports": product_reports,
+                        "report_date": end_date,
+                        "merchant_name": merchant_name,
+                    },
+                    "summary": f"点击{merchant_report['clicks'] if merchant_report else 0} | 佣金${merchant_report['commission'] if merchant_report else 0}",
+                }
+            )
+        else:
+            return jsonify(
+                {
+                    "success": True,
+                    "data": {
+                        "merchant_report": None,
+                        "product_reports": [],
+                        "report_date": end_date,
+                        "merchant_name": merchant_name,
+                    },
+                    "summary": "暂无销售数据，点击重新获取",
+                }
+            )
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
 @bp.route("/api/workflow/website/<merchant_id>", methods=["GET", "POST", "PUT"])
 def api_workflow_website(merchant_id):
     """Step 2: 获取/更新官网"""

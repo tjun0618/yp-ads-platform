@@ -254,6 +254,13 @@
                         <span class="node-status status-pending" id="status-merchant">待执行</span>
                         <div class="node-data" id="data-merchant"></div>
                     </div>
+                    <div class="node locked" id="node-sales" onclick="executeNode('sales')">
+                        <div class="node-icon">💰</div>
+                        <div class="node-title">销售数据</div>
+                        <div class="node-desc">获取商户销售转化数据</div>
+                        <span class="node-status status-pending" id="status-sales">待执行</span>
+                        <div class="node-data" id="data-sales"></div>
+                    </div>
                 </div>
             </div>
             
@@ -425,6 +432,7 @@
         const workflowState = {
             merchantId: null,
             merchant: null,
+            sales: null,  // 销售数据
             website: null,
             keywords: null,  // 改为 null，避免空数组被误判为 truthy
             google_serp: null,
@@ -443,6 +451,7 @@
         // 节点依赖关系
         const nodeDependencies = {
             merchant: [],
+            sales: ['merchant'],
             website: ['merchant'],
             keywords: ['merchant'],
             // google_serp: ['merchant'],  // 暂时注释
@@ -457,7 +466,7 @@
         };
         
         // 节点执行顺序
-        const nodeOrder = ['merchant', 'website', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate', 'improve'];
+        const nodeOrder = ['merchant', 'sales', 'website', 'keywords', 'semrush', 'products', 'amazon', 'report', 'ads', 'evaluate', 'improve'];
         
         // 日志
         function log(message, type = 'info') {
@@ -644,6 +653,12 @@
                 return;
             }
             
+            // 特殊处理：销售数据节点显示确认对话框
+            if (nodeId === 'sales') {
+                await showSalesDialog();
+                return;
+            }
+            
             if (workflowState[nodeId]) {
                 // 特殊处理：website 节点显示编辑选项
                 if (nodeId === 'website') {
@@ -797,6 +812,7 @@
         function getNodeTitle(nodeId) {
             const titles = {
                 merchant: '获取商户信息',
+                sales: '获取销售数据',
                 website: '获取官网',
                 keywords: '采集谷歌关键词',
                 // google_serp: '采集谷歌搜索结果',  // 暂时注释
@@ -818,6 +834,7 @@
             
             const apiMap = {
                 merchant: `/api/workflow/merchant/${merchantId}`,
+                sales: `/api/workflow/sales/${merchantId}`,
                 website: `/api/workflow/website/${merchantId}`,
                 keywords: `/api/workflow/keywords/${merchantId}`,
                 // google_serp: `/api/workflow/google_serp/${merchantId}`,  // 暂时注释
@@ -1320,6 +1337,123 @@
             } catch (e) {
                 updateNodeStatus('amazon', 'error');
                 log(`采集异常: ${e.message}`, 'error');
+            }
+        }
+        
+        // 显示销售数据对话框
+        async function showSalesDialog() {
+            const merchantId = workflowState.merchantId;
+            const merchantName = workflowState.merchant?.merchant_name || merchantId;
+            
+            // 设置默认日期范围（本月）
+            const today = new Date();
+            const startDate = today.toISOString().slice(0, 8) + '01';  // 本月第一天
+            const endDate = today.toISOString().slice(0, 10);
+            
+            document.getElementById('modalTitle').textContent = '💰 销售数据 - ' + merchantName;
+            
+            // 检查数据库中是否已有数据
+            let hasExistingData = false;
+            let existingDataInfo = '';
+            try {
+                const checkResponse = await fetch(`/api/workflow/sales/${merchantId}?start_date=${startDate}&end_date=${endDate}`);
+                const checkResult = await checkResponse.json();
+                if (checkResult.success && checkResult.data && checkResult.data.merchant_report) {
+                    hasExistingData = true;
+                    const mr = checkResult.data.merchant_report;
+                    existingDataInfo = `
+                        <div style="background:#1a2e1a;border:1px solid #4caf50;padding:12px;border-radius:6px;margin-bottom:15px;">
+                            <div style="font-weight:600;margin-bottom:8px;">📊 数据库中已有数据 (${checkResult.data.report_date || '最新'})</div>
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;font-size:13px;">
+                                <div>点击: <b>${mr.clicks || 0}</b></div>
+                                <div>详情浏览: <b>${mr.detail_views || 0}</b></div>
+                                <div>加购: <b>${mr.add_to_carts || 0}</b></div>
+                                <div>购买: <b>${mr.purchases || 0}</b></div>
+                            </div>
+                            <div style="margin-top:8px;font-size:13px;">
+                                销售额: <b style="color:#4caf50">$${mr.amount || 0}</b> | 
+                                佣金: <b style="color:#4caf50">$${mr.commission || 0}</b>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error('检查销售数据失败:', e);
+            }
+            
+            document.getElementById('modalBody').innerHTML = `
+                ${existingDataInfo}
+                <div style="margin-bottom:15px;">
+                    <label style="display:block;margin-bottom:8px;font-weight:600;">📅 选择日期范围</label>
+                    <div style="display:flex;gap:10px;align-items:center;">
+                        <input type="date" id="salesStartDate" value="${startDate}" style="padding:8px;border-radius:6px;border:1px solid #444;background:#1a1a2e;color:#fff;">
+                        <span>至</span>
+                        <input type="date" id="salesEndDate" value="${endDate}" style="padding:8px;border-radius:6px;border:1px solid #444;background:#1a1a2e;color:#fff;">
+                    </div>
+                </div>
+                <div style="background:#2a2d36;padding:12px;border-radius:6px;margin-bottom:15px;font-size:13px;color:#aaa;">
+                    <div style="font-weight:600;color:#fff;margin-bottom:5px;">💡 提示</div>
+                    <ul style="margin-left:15px;">
+                        <li>点击"重新获取"将从YP平台拉取最新数据并更新数据库</li>
+                        <li>点击"查看现有"直接读取数据库中的历史数据</li>
+                        <li>数据每天变化，建议定期更新</li>
+                    </ul>
+                </div>
+            `;
+            
+            // 更新模态框按钮
+            const footer = document.getElementById('modal').querySelector('.modal-footer');
+            footer.innerHTML = `
+                <button class="btn btn-primary" onclick="fetchSalesData(true)">🔄 重新获取</button>
+                <button class="btn btn-success" onclick="fetchSalesData(false)">📊 查看现有</button>
+                <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+            `;
+            
+            document.getElementById('modal').classList.add('active');
+        }
+        
+        // 获取销售数据
+        async function fetchSalesData(forceRefresh) {
+            const merchantId = workflowState.merchantId;
+            const startDate = document.getElementById('salesStartDate').value;
+            const endDate = document.getElementById('salesEndDate').value;
+            
+            if (!startDate || !endDate) {
+                log('请选择日期范围', 'error');
+                return;
+            }
+            
+            closeModal();
+            updateNodeStatus('sales', 'running');
+            log(`正在${forceRefresh ? '获取最新' : '查询'}销售数据...`, 'info');
+            
+            try {
+                const url = `/api/workflow/sales/${merchantId}?start_date=${startDate}&end_date=${endDate}&force=${forceRefresh}`;
+                const response = await fetch(url, { method: 'POST' });
+                const result = await response.json();
+                
+                if (result.success) {
+                    workflowState.sales = result.data;
+                    
+                    // 构建摘要信息
+                    const mr = result.data.merchant_report || {};
+                    const pr = result.data.product_reports || [];
+                    const summary = `点击${mr.clicks || 0} | 加购${mr.add_to_carts || 0} | 购买${mr.purchases || 0} | 佣金$${mr.commission || 0}`;
+                    
+                    updateNodeStatus('sales', 'completed', summary);
+                    log(`销售数据获取成功`, 'success');
+                    
+                    // 如果有商品数据，显示详情
+                    if (pr.length > 0) {
+                        log(`共 ${pr.length} 个商品有销售数据`, 'info');
+                    }
+                } else {
+                    updateNodeStatus('sales', 'error');
+                    log(`获取销售数据失败: ${result.error}`, 'error');
+                }
+            } catch (e) {
+                updateNodeStatus('sales', 'error');
+                log(`获取销售数据异常: ${e.message}`, 'error');
             }
         }
     </script>
