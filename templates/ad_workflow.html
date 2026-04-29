@@ -1443,9 +1443,10 @@
                     updateNodeStatus('sales', 'completed', summary);
                     log(`销售数据获取成功`, 'success');
                     
-                    // 如果有商品数据，显示详情
+                    // 显示商品明细表格
                     if (pr.length > 0) {
                         log(`共 ${pr.length} 个商品有销售数据`, 'info');
+                        showSalesProductsTable(pr);
                     }
                 } else {
                     updateNodeStatus('sales', 'error');
@@ -1455,6 +1456,64 @@
                 updateNodeStatus('sales', 'error');
                 log(`获取销售数据异常: ${e.message}`, 'error');
             }
+        }
+        
+        // 显示销售商品明细表格
+        function showSalesProductsTable(products) {
+            const merchantId = workflowState.merchantId;
+            const merchantName = workflowState.merchant?.merchant_name || merchantId;
+            
+            // 构建表格HTML
+            let tableRows = '';
+            products.forEach((p, idx) => {
+                tableRows += `
+                    <tr>
+                        <td style="text-align:center">${idx + 1}</td>
+                        <td><code style="background:#2a2d36;padding:2px 6px;border-radius:4px;">${p.asin || '-'}</code></td>
+                        <td>${p.product_name || '-'}</td>
+                        <td style="text-align:right">${(p.clicks || 0).toLocaleString()}</td>
+                        <td style="text-align:right">${(p.detail_views || 0).toLocaleString()}</td>
+                        <td style="text-align:right">${(p.add_to_carts || 0).toLocaleString()}</td>
+                        <td style="text-align:right">${(p.purchases || 0).toLocaleString()}</td>
+                        <td style="text-align:right;color:#4caf50">$${(p.amount || 0).toLocaleString()}</td>
+                        <td style="text-align:right;color:#e879f9">$${(p.commission || 0).toLocaleString()}</td>
+                    </tr>
+                `;
+            });
+            
+            document.getElementById('modalTitle').textContent = '💰 销售商品明细 - ' + merchantName;
+            document.getElementById('modalBody').innerHTML = `
+                <div style="overflow-x:auto;">
+                    <table class="data-table" style="width:100%;min-width:800px;">
+                        <thead>
+                            <tr>
+                                <th style="width:40px">#</th>
+                                <th style="width:100px">ASIN</th>
+                                <th>商品名称</th>
+                                <th style="width:70px">点击</th>
+                                <th style="width:80px">详情浏览</th>
+                                <th style="width:70px">加购</th>
+                                <th style="width:70px">购买</th>
+                                <th style="width:90px">销售金额</th>
+                                <th style="width:80px">佣金</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:15px;font-size:12px;color:#888;">
+                    共 ${products.length} 个商品有销售数据
+                </div>
+            `;
+            
+            const footer = document.getElementById('modal').querySelector('.modal-footer');
+            footer.innerHTML = `
+                <button class="btn btn-secondary" onclick="closeModal()">关闭</button>
+            `;
+            
+            document.getElementById('modal').classList.add('active');
         }
     </script>
 </body>

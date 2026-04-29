@@ -150,57 +150,76 @@ class YPReportCollector:
     def login(self, username="Tong jun", password="@Tj840618"):
         """登录YP平台"""
         print(f"[INFO] 正在检查登录状态...")
-        self.page.goto(YP_BASE_URL + "/index/amounts/index")
-        self.page.wait_for_load_state("networkidle")
-        
+        try:
+            self.page.goto(YP_BASE_URL + "/index/amounts/index", timeout=60000)
+            self.page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as e:
+            print(f"[WARN] 页面加载超时，尝试继续: {e}")
+            # 超时后检查当前页面状态
+            if self.page.url and "yeahpromos" in self.page.url:
+                print("[OK] 页面已部分加载，继续检查登录状态")
+            else:
+                raise
+
         # 检查是否已登录
         if "login" not in self.page.url:
             print("[OK] 已登录")
             return True
-        
+
         # 跳转到登录页
         print("[INFO] 需要登录，正在跳转到登录页...")
-        self.page.goto(YP_LOGIN_URL)
-        self.page.wait_for_load_state("networkidle")
-            
+        try:
+            self.page.goto(YP_LOGIN_URL, timeout=60000)
+            self.page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as e:
+            print(f"[WARN] 登录页加载超时: {e}")
+
         # 填写用户名密码（使用正确的选择器）
         try:
             # 用户名输入框
-            uname_input = self.page.query_selector('input[placeholder*="User"], input[name="uname"], #uname')
+            uname_input = self.page.query_selector(
+                'input[placeholder*="User"], input[name="uname"], #uname'
+            )
             if uname_input:
                 uname_input.fill(username)
-            
+
             # 密码输入框
-            pwd_input = self.page.query_selector('input[type="password"], input[name="pwd"], #pwd')
+            pwd_input = self.page.query_selector(
+                'input[type="password"], input[name="pwd"], #pwd'
+            )
             if pwd_input:
                 pwd_input.fill(password)
         except Exception as e:
             print(f"[WARN] 自动填充失败: {e}")
-        
+
         # 检查是否有验证码
-        captcha_input = self.page.query_selector('input[placeholder*="Verify"], input[name="captcha"]')
+        captcha_input = self.page.query_selector(
+            'input[placeholder*="Verify"], input[name="captcha"]'
+        )
         if captcha_input:
             # 需要手动输入验证码
             print("[WARN] 需要手动输入验证码")
             print("[INFO] 请在浏览器中完成登录，然后按回车继续...")
             input()
-            
+
             # 等待登录成功
             self.page.wait_for_url("**/amounts/index**", timeout=60000)
             print("[OK] 登录成功")
             return True
         else:
             # 尝试点击登录按钮
-            login_btn = self.page.query_selector('button:has-text("Go"), button[type="submit"]')
+            login_btn = self.page.query_selector(
+                'button:has-text("Go"), button[type="submit"]'
+            )
             if login_btn:
                 login_btn.click()
                 self.page.wait_for_load_state("networkidle")
-                
+
                 # 检查是否登录成功
                 if "login" not in self.page.url:
                     print("[OK] 登录成功")
                     return True
-                    
+
         print("[WARN] 自动登录失败，请手动登录后按回车继续...")
         input()
         return True
@@ -260,8 +279,11 @@ class YPReportCollector:
         print(f"[INFO] 采集商户报表: {start_date} ~ {end_date}")
 
         url = f"{YP_MERCHANT_REPORT_URL}?start_date={start_date}&end_date={end_date}&site_id={site_id}&dim=advert_id"
-        self.page.goto(url)
-        self.page.wait_for_load_state("networkidle")
+        try:
+            self.page.goto(url, timeout=60000)
+            self.page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as e:
+            print(f"[WARN] 商户报表页面加载超时: {e}")
 
         # 提取表格数据
         data = self.page.evaluate("""
@@ -300,8 +322,11 @@ class YPReportCollector:
         print(f"[INFO] 采集商品报表: {start_date} ~ {end_date}")
 
         url = f"{YP_PRODUCT_REPORT_URL}?start_date={start_date}&end_date={end_date}&site_id={site_id}&dim=CampaignId"
-        self.page.goto(url)
-        self.page.wait_for_load_state("networkidle")
+        try:
+            self.page.goto(url, timeout=60000)
+            self.page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as e:
+            print(f"[WARN] 商品报表页面加载超时: {e}")
 
         # 提取表格数据
         data = self.page.evaluate("""
@@ -463,9 +488,9 @@ def main():
 
     args = parser.parse_args()
 
-    # 默认日期范围：本月
+    # 默认日期范围：2026-01-01 到当天
     if not args.start_date:
-        args.start_date = datetime.now().strftime("%Y-%m-01")
+        args.start_date = "2026-01-01"
     if not args.end_date:
         args.end_date = datetime.now().strftime("%Y-%m-%d")
 

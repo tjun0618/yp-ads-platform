@@ -54,6 +54,7 @@ from routes_merchants import bp as merchants_bp
 from routes_collect import bp as collect_bp
 from routes_analytics import bp as analytics_bp
 from routes_agent_chat import bp as agent_chat_bp
+from routes_agent_sop import bp as agent_sop_bp
 
 app = Flask(__name__)
 
@@ -63,6 +64,7 @@ app.register_blueprint(merchants_bp)
 app.register_blueprint(collect_bp)
 app.register_blueprint(analytics_bp)
 app.register_blueprint(agent_chat_bp)
+app.register_blueprint(agent_sop_bp)
 
 
 # ─── 启动控制台 ─────────────────────────────────────────────────────────────
